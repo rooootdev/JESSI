@@ -49,7 +49,7 @@ else
   cp -aL "$APP_DIR/." "$DEST_APP/"
 fi
 
-# sanity check: ensure runtimes actually got embedded by the Xcode build
+# ensure runtimes actually got embedded by the xcode build
 for name in java java17 java21; do
   if [[ ! -d "$DEST_APP/Resources/$name" ]]; then
     echo "ERROR: Built app is missing embedded runtime: $DEST_APP/Resources/$name" >&2
@@ -69,4 +69,4 @@ rm -f "$IPA_PATH"
 )
 
 echo "Created: $IPA_PATH"
-echo "Install with SideStore/AltStore/StikDebug or TrollStore (they will re-sign)."
+echo "Build complete."
