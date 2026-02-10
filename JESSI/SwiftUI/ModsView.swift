@@ -363,6 +363,7 @@ private struct Mod: View {
                 }
                 
                 // disgusting
+                // I think its beautiful <3
                 (
                     Text("by ")
                         .foregroundColor(.secondary)

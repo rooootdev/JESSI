@@ -4,6 +4,7 @@ import UIKit
 
 enum ServerSoftwareSwift: String, CaseIterable, Identifiable {
     case vanilla = "Vanilla"
+    case paper = "Paper"
     case forge = "Forge"
     case neoforge = "NeoForge"
     case fabric = "Fabric"
@@ -14,14 +15,18 @@ enum ServerSoftwareSwift: String, CaseIterable, Identifiable {
 
 struct CreateServerView: View {
     @State private var software: ServerSoftwareSwift = .vanilla
+    @State private var previousSoftware: ServerSoftwareSwift = .vanilla
     @State private var serverName: String = ""
 
     @State private var mcVersion: String = ""
     @State private var availableVersions: [String] = []
     @State private var loadingVersions: Bool = false
-    @State private var showVersionPicker: Bool = false
-    @State private var versionFilter: String = ""
     @State private var versionFetchError: String? = nil
+
+    @State private var showSoftwareMenu: Bool = false
+    @State private var showVersionMenu: Bool = false
+    @State private var softwareAnchorFrame: CGRect = .zero
+    @State private var versionAnchorFrame: CGRect = .zero
 
     @State private var showingIconImporter: Bool = false
     @State private var showingJarImporter: Bool = false
@@ -49,6 +54,10 @@ struct CreateServerView: View {
     @State private var pendingCreateServer: Bool = false
 
     @Environment(\.presentationMode) private var presentation
+
+    private var menuAnimation: Animation {
+        .spring(response: 0.28, dampingFraction: 0.88, blendDuration: 0.12)
+    }
 
     private struct DocumentPicker: UIViewControllerRepresentable {
         let contentTypes: [UTType]
@@ -87,39 +96,106 @@ struct CreateServerView: View {
         }
     }
 
+    private struct ImagePicker: UIViewControllerRepresentable {
+        let onPick: (UIImage) -> Void
+        let onCancel: () -> Void
+
+        func makeUIViewController(context: Context) -> UIImagePickerController {
+            let picker = UIImagePickerController()
+            picker.sourceType = .photoLibrary
+            picker.delegate = context.coordinator
+            return picker
+        }
+
+        func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+        func makeCoordinator() -> Coordinator {
+            Coordinator(onPick: onPick, onCancel: onCancel)
+        }
+
+        class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+            let onPick: (UIImage) -> Void
+            let onCancel: () -> Void
+
+            init(onPick: @escaping (UIImage) -> Void, onCancel: @escaping () -> Void) {
+                self.onPick = onPick
+                self.onCancel = onCancel
+            }
+
+            func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+                if let image = info[.originalImage] as? UIImage {
+                    onPick(image)
+                }
+            }
+
+            func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+                onCancel()
+            }
+        }
+    }
+
     var body: some View {
         ZStack(alignment: .bottom) {
             List {
                 Section(header: Text("Required Settings")) {
-                    Picker("Software", selection: $software) {
-                        ForEach(ServerSoftwareSwift.allCases) { s in
-                            Text(s.rawValue).tag(s)
+                    Button(action: {
+                        withAnimation(menuAnimation) {
+                            showVersionMenu = false
+                            showSoftwareMenu = true
                         }
+                    }) {
+                        HStack {
+                            Text("Software")
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Text(software.rawValue)
+                                .foregroundColor(.green)
+                        }
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(PlainButtonStyle())
+                    .background(FrameReporter(id: "software"))
+                    .accessibilityLabel(Text("Software"))
+                    .accessibilityValue(Text(software.rawValue))
 
 
                     TextField("Server Name", text: $serverName)
 
                     if software == .customJar {
-                        HStack {
-                            Text("Custom Jar")
-                            Spacer()
-                            Button(customJarURL == nil ? "Select..." : (customJarURL!.lastPathComponent)) {
-                                showingJarImporter = true
+                        Button(action: { showingJarImporter = true }) {
+                            HStack {
+                                Text("Custom Jar")
+                                    .foregroundColor(.primary)
+                                Spacer()
+                                Text(customJarURL == nil ? "Select..." : (customJarURL!.lastPathComponent))
+                                    .foregroundColor(.green)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
                             }
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(PlainButtonStyle())
                     } else {
-                        HStack {
-                            Text("Minecraft Version")
-                            Spacer()
-                            if loadingVersions {
-                                Text("Loading...").foregroundColor(.secondary)
-                            } else if mcVersion.isEmpty {
-                                Button("Select...") { openVersionPicker() }
-                                    .foregroundColor(.blue)
-                            } else {
-                                Button(mcVersion) { openVersionPicker() }
+                        if loadingVersions {
+                            HStack {
+                                Text("Minecraft Version")
+                                Spacer()
+                                Text("Loading...")
+                                    .foregroundColor(.secondary)
                             }
+                        } else {
+                            Button(action: { openVersionMenu() }) {
+                                HStack {
+                                    Text("Minecraft Version")
+                                        .foregroundColor(.primary)
+                                    Spacer()
+                                    Text(mcVersion.isEmpty ? "Select..." : mcVersion)
+                                        .foregroundColor(.green)
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .background(FrameReporter(id: "version"))
                         }
                         if let err = versionFetchError {
                             Text(err)
@@ -131,12 +207,17 @@ struct CreateServerView: View {
                 }
 
                 Section(header: Text("Server Icon (Optional)")) {
-                    HStack {
-                        Text("Import server icon")
-                        Spacer()
-                        Button(serverIcon == nil ? "Select..." : "Selected") { showingIconImporter = true }
-                            .foregroundColor(.blue)
+                    Button(action: { showingIconImporter = true }) {
+                        HStack {
+                            Text("Import server icon")
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Text(serverIcon == nil ? "Select..." : "Selected")
+                                .foregroundColor(.green)
+                        }
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(PlainButtonStyle())
                 }
 
                 Section(header: Text("Quick Settings (Optional)")) {
@@ -152,7 +233,6 @@ struct CreateServerView: View {
             .listStyle(.insetGrouped)
             .navigationTitle("Server Setup")
             .navigationBarTitleDisplayMode(.inline)
-            .padding(.bottom, 88)
 
             Button(action: createServer) {
                 HStack(spacing: 10) {
@@ -169,17 +249,52 @@ struct CreateServerView: View {
             .disabled(isCreating)
             .foregroundColor(.white)
             .background(Color.green)
-            .cornerRadius(12)
+            .cornerRadius(14)
+            .shadow(color: Color.black.opacity(0.5), radius: 8, x: 0, y: 4)
             .padding(.horizontal, 16)
-            .padding(.bottom, 12)
+            .padding(.bottom, 24)
         }
+        .onPreferenceChange(FramePreferenceKey.self) { frames in
+            if let f = frames["software"] { self.softwareAnchorFrame = f }
+            if let f = frames["version"] { self.versionAnchorFrame = f }
+        }
+        .overlay(
+            Group {
+                if showSoftwareMenu {
+                    DropdownOverlay(
+                        isPresented: $showSoftwareMenu,
+                        anchorFrame: softwareAnchorFrame,
+                        items: softwareDropdownItems,
+                        maxVisibleRows: 5
+                    )
+                }
+                if showVersionMenu {
+                    DropdownOverlay(
+                        isPresented: $showVersionMenu,
+                        anchorFrame: versionAnchorFrame,
+                        items: versionDropdownItems,
+                        maxVisibleRows: 5
+                    )
+                }
+            }
+        )
         .onAppear { ensureBaseDirectories() }
         .onChange(of: software) { newValue in
             if newValue == .customJar {
                 mcVersion = ""
+                availableVersions = []
+                versionFetchError = nil
             } else {
                 customJarURL = nil
             }
+
+            if previousSoftware != newValue, newValue != .customJar {
+                mcVersion = ""
+                availableVersions = []
+                versionFetchError = nil
+            }
+
+            previousSoftware = newValue
         }
         .sheet(isPresented: $showingJarImporter) {
             DocumentPicker(contentTypes: [.data], onPick: { url in
@@ -189,32 +304,9 @@ struct CreateServerView: View {
                 showingJarImporter = false
             })
         }
-        .sheet(isPresented: $showVersionPicker) {
-            NavigationView {
-                VersionPickerSheet(
-                    versions: availableVersions,
-                    filter: $versionFilter,
-                    selected: mcVersion,
-                    onSelect: { v in
-                        mcVersion = v
-                        showVersionPicker = false
-                    },
-                    onCancel: {
-                        showVersionPicker = false
-                    },
-                    onReload: {
-                        fetchVersions(force: true)
-                    }
-                )
-            }
-        }
         .sheet(isPresented: $showingIconImporter) {
-            DocumentPicker(contentTypes: [.image], onPick: { url in
-                let scoped = url.startAccessingSecurityScopedResource()
-                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-                if let data = try? Data(contentsOf: url), let img = UIImage(data: data) {
-                    serverIcon = normalizeIcon(img)
-                }
+            ImagePicker(onPick: { image in
+                serverIcon = normalizeIcon(image)
                 showingIconImporter = false
             }, onCancel: {
                 showingIconImporter = false
@@ -285,55 +377,70 @@ struct CreateServerView: View {
         }
     }
 
-    private struct VersionPickerSheet: View {
-        let versions: [String]
-        @Binding var filter: String
-        let selected: String
-        let onSelect: (String) -> Void
-        let onCancel: () -> Void
-        let onReload: () -> Void
-
-        private var filtered: [String] {
-            let f = filter.trimmingCharacters(in: .whitespacesAndNewlines)
-            if f.isEmpty { return versions }
-            return versions.filter { $0.localizedCaseInsensitiveContains(f) }
-        }
-
-        var body: some View {
-            List {
-                Section {
-                    HStack(spacing: 12) {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(.secondary)
-                        TextField("Search version", text: $filter)
-                            .autocapitalization(.none)
-                            .disableAutocorrection(true)
-                    }
+    private var softwareDropdownItems: [DropdownItem] {
+        ServerSoftwareSwift.allCases.map { s in
+            DropdownItem(
+                id: s.rawValue,
+                title: s.rawValue,
+                isSelected: s == software,
+                isEnabled: true,
+                systemImage: nil,
+                tint: nil,
+                action: {
+                    software = s
                 }
-
-                Section {
-                    ForEach(filtered.prefix(250), id: \.self) { v in
-                        Button(action: { onSelect(v) }) {
-                            HStack {
-                                Text(v)
-                                Spacer()
-                                if v == selected {
-                                    Image(systemName: "checkmark")
-                                        .foregroundColor(.green)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            .listStyle(InsetGroupedListStyle())
-            .navigationTitle("Minecraft Version")
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationBarItems(
-                leading: Button("Cancel") { onCancel() },
-                trailing: Button(action: { onReload() }) { Image(systemName: "arrow.clockwise") }
             )
         }
+    }
+
+    private var versionDropdownItems: [DropdownItem] {
+        var items: [DropdownItem] = []
+
+        if loadingVersions {
+            items.append(
+                DropdownItem(
+                    id: "loading",
+                    title: "Loading...",
+                    isSelected: false,
+                    isEnabled: false,
+                    systemImage: nil,
+                    tint: .secondary,
+                    action: { }
+                )
+            )
+        }
+
+        for v in availableVersions.prefix(400) {
+            items.append(
+                DropdownItem(
+                    id: v,
+                    title: v,
+                    isSelected: v == mcVersion,
+                    isEnabled: true,
+                    systemImage: nil,
+                    tint: nil,
+                    action: {
+                        mcVersion = v
+                    }
+                )
+            )
+        }
+
+        if availableVersions.isEmpty, !loadingVersions {
+            items.append(
+                DropdownItem(
+                    id: "empty",
+                    title: "No versions loaded",
+                    isSelected: false,
+                    isEnabled: false,
+                    systemImage: nil,
+                    tint: .secondary,
+                    action: { }
+                )
+            )
+        }
+
+        return items
     }
 
     private struct QuickSettingValueRow: View {
@@ -445,14 +552,183 @@ struct CreateServerView: View {
         return (docs as NSString).appendingPathComponent("servers")
     }
 
-    private func openVersionPicker() {
+    private func openVersionMenu() {
         versionFetchError = nil
+
+        if showVersionMenu {
+            withAnimation(menuAnimation) {
+                showVersionMenu = false
+            }
+            return
+        }
+
         if availableVersions.isEmpty {
             fetchVersions(force: true) {
-                showVersionPicker = true
+                withAnimation(menuAnimation) {
+                    showSoftwareMenu = false
+                    showVersionMenu = true
+                }
             }
         } else {
-            showVersionPicker = true
+            withAnimation(menuAnimation) {
+                showSoftwareMenu = false
+                showVersionMenu = true
+            }
+        }
+    }
+
+    private struct DropdownItem: Identifiable {
+        let id: String
+        let title: String
+        let isSelected: Bool
+        let isEnabled: Bool
+        let systemImage: String?
+        let tint: Color?
+        let action: () -> Void
+    }
+
+    private struct FramePreferenceKey: PreferenceKey {
+        static var defaultValue: [String: CGRect] = [:]
+        static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+            value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+        }
+    }
+
+    private struct FrameReporter: View {
+        let id: String
+        var body: some View {
+            GeometryReader { proxy in
+                Color.clear
+                    .preference(key: FramePreferenceKey.self, value: [id: proxy.frame(in: .global)])
+            }
+        }
+    }
+
+    private struct DropdownOverlay: View {
+        @Binding var isPresented: Bool
+        let anchorFrame: CGRect
+        let items: [DropdownItem]
+        let maxVisibleRows: Int
+
+        @State private var menuVisible: Bool = false
+
+        private let rowHeight: CGFloat = 44
+        private let maxWidth: CGFloat = 280
+        private let minWidth: CGFloat = 220
+        private let edgePadding: CGFloat = 12
+        private let verticalGap: CGFloat = 4
+        private let proximityAdjust: CGFloat = 100
+
+        private func resolvedAnchor(in screen: CGRect) -> CGRect {
+            if anchorFrame == .zero {
+                return CGRect(x: screen.midX, y: screen.midY, width: 0, height: 0)
+            }
+            return anchorFrame
+        }
+
+        private func animateIn() {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.88, blendDuration: 0.12)) {
+                menuVisible = true
+            }
+        }
+
+        private func dismiss() {
+            withAnimation(.spring(response: 0.22, dampingFraction: 0.92, blendDuration: 0.10)) {
+                menuVisible = false
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                isPresented = false
+            }
+        }
+
+        var body: some View {
+            let screen = UIScreen.main.bounds
+            let anchor = resolvedAnchor(in: screen)
+            let preferred = max(minWidth, min(maxWidth, anchor.width * 0.62))
+            let width = min(preferred, screen.width - (edgePadding * 2))
+            let visibleRows = min(CGFloat(maxVisibleRows), CGFloat(max(items.count, 1)))
+            let menuHeight = max(rowHeight, visibleRows * rowHeight)
+
+            let x = min(max(anchor.maxX - (width / 2), (width / 2) + edgePadding), screen.width - (width / 2) - edgePadding)
+
+            let belowCenterY = anchor.maxY + (menuHeight / 2) + verticalGap - proximityAdjust
+            let aboveCenterY = anchor.minY - (menuHeight / 2) - verticalGap + proximityAdjust
+            let canFitBelow = (belowCenterY + (menuHeight / 2)) <= (screen.height - edgePadding)
+            let y: CGFloat = canFitBelow
+                ? belowCenterY
+                : max(aboveCenterY, (menuHeight / 2) + edgePadding)
+
+            return ZStack {
+                Color.black.opacity(0.001)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        dismiss()
+                    }
+
+                Rectangle()
+                    .fill(Color.black.opacity(0.001))
+                    .frame(width: anchor.width, height: anchor.height)
+                    .position(x: anchor.midX, y: anchor.midY)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        dismiss()
+                    }
+
+                VStack(spacing: 0) {
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(items) { item in
+                                Button(action: {
+                                    item.action()
+                                    dismiss()
+                                }) {
+                                    HStack(spacing: 10) {
+                                        if let img = item.systemImage {
+                                            Image(systemName: img)
+                                                .foregroundColor(item.tint ?? .primary)
+                                        }
+
+                                        Text(item.title)
+                                            .foregroundColor(item.tint ?? .primary)
+                                            .lineLimit(1)
+
+                                        Spacer(minLength: 10)
+
+                                        if item.isSelected {
+                                            Image(systemName: "checkmark")
+                                                .foregroundColor(.green)
+                                        }
+                                    }
+                                    .padding(.horizontal, 14)
+                                    .frame(height: rowHeight)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                .disabled(!item.isEnabled)
+
+                                Divider().opacity(0.28)
+                            }
+                        }
+                    }
+                    .frame(maxHeight: CGFloat(maxVisibleRows) * rowHeight)
+                }
+                .frame(width: width)
+                .background(
+                    Color(UIColor.secondarySystemBackground)
+                        .overlay(Color(UIColor.systemBackground).opacity(0.06))
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(Color.black.opacity(0.07), lineWidth: 1)
+                )
+                .shadow(color: Color.black.opacity(0.16), radius: 18, x: 0, y: 10)
+                .scaleEffect(menuVisible ? 1 : 0.01, anchor: .topTrailing)
+                .opacity(menuVisible ? 1 : 0)
+                .position(x: x, y: y)
+                .onAppear { animateIn() }
+            }
         }
     }
 
@@ -473,25 +749,221 @@ struct CreateServerView: View {
         if !force, !availableVersions.isEmpty { completion?(); return }
 
         loadingVersions = true
-        let urlString = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
-        guard let url = URL(string: urlString) else {
-            loadingVersions = false
-            versionFetchError = "Invalid version URL"
+
+        func finishOnMain(_ versions: [String], _ err: String?) {
+            DispatchQueue.main.async {
+                self.loadingVersions = false
+                if let err = err { self.versionFetchError = err }
+                if !versions.isEmpty { self.availableVersions = versions }
+                completion?()
+            }
+        }
+
+        if software == .customJar {
+            finishOnMain([], nil)
             return
         }
 
-        URLSession.shared.dataTask(with: url) { data, response, error in
-            func finish(_ versions: [String], _ err: String?) {
-                DispatchQueue.main.async {
-                    self.loadingVersions = false
-                    if let err = err { self.versionFetchError = err }
-                    if !versions.isEmpty { self.availableVersions = versions }
-                    completion?()
+        switch software {
+        case .paper:
+            guard let url = URL(string: "https://api.papermc.io/v2/projects/paper") else {
+                finishOnMain([], "Invalid Paper version URL")
+                return
+            }
+            fetchJSON(url) { result in
+                switch result {
+                case .failure(let err):
+                    finishOnMain([], "Failed to load Paper versions: \(err.localizedDescription)")
+                case .success(let json):
+                    guard let dict = json as? [String: Any],
+                          let versions = dict["versions"] as? [String]
+                    else {
+                        finishOnMain([], "Failed to parse Paper version list")
+                        return
+                    }
+                    finishOnMain(Array(versions.reversed()), nil)
                 }
             }
+            return
 
+        case .fabric:
+            guard let url = URL(string: "https://meta.fabricmc.net/v2/versions/game") else {
+                finishOnMain([], "Invalid Fabric version URL")
+                return
+            }
+            fetchJSON(url) { result in
+                switch result {
+                case .failure(let err):
+                    finishOnMain([], "Failed to load Fabric versions: \(err.localizedDescription)")
+                case .success(let json):
+                    guard let arr = json as? [[String: Any]] else {
+                        finishOnMain([], "Failed to parse Fabric version list")
+                        return
+                    }
+                    let versions: [String] = arr.compactMap { $0["version"] as? String }
+                    let stable = Set(arr.compactMap { (($0["stable"] as? Bool) == true) ? ($0["version"] as? String) : nil })
+                    let sorted = versions.sorted { a, b in
+                        let sa = stable.contains(a)
+                        let sb = stable.contains(b)
+                        if sa != sb { return sa && !sb }
+                        return self.isVersionHigher(a, than: b)
+                    }
+                    finishOnMain(sorted, nil)
+                }
+            }
+            return
+
+        case .quilt:
+            guard let url = URL(string: "https://meta.quiltmc.org/v3/versions/game") else {
+                finishOnMain([], "Invalid Quilt version URL")
+                return
+            }
+            fetchJSON(url) { result in
+                switch result {
+                case .failure(let err):
+                    finishOnMain([], "Failed to load Quilt versions: \(err.localizedDescription)")
+                case .success(let json):
+                    guard let arr = json as? [[String: Any]] else {
+                        finishOnMain([], "Failed to parse Quilt version list")
+                        return
+                    }
+                    let versions: [String] = arr.compactMap { $0["version"] as? String }
+                    let stable = Set(arr.compactMap { (($0["stable"] as? Bool) == true) ? ($0["version"] as? String) : nil })
+                    let sorted = versions.sorted { a, b in
+                        let sa = stable.contains(a)
+                        let sb = stable.contains(b)
+                        if sa != sb { return sa && !sb }
+                        return self.isVersionHigher(a, than: b)
+                    }
+                    finishOnMain(sorted, nil)
+                }
+            }
+            return
+
+        case .forge:
+            guard let promosURL = URL(string: "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json") else {
+                finishOnMain([], "Invalid Forge promotions URL")
+                return
+            }
+            fetchJSON(promosURL) { promoRes in
+                switch promoRes {
+                case .failure(let err):
+                    finishOnMain([], "Failed to load Forge versions: \(err.localizedDescription)")
+                case .success(let json):
+                    guard let dict = json as? [String: Any],
+                          let promos = dict["promos"] as? [String: Any]
+                    else {
+                        finishOnMain([], "Failed to parse Forge promotions")
+                        return
+                    }
+
+                    var supported = Set<String>()
+                    for key in promos.keys {
+                        if let idx = key.firstIndex(of: "-") {
+                            supported.insert(String(key[..<idx]))
+                        }
+                    }
+
+                    guard let manifestURL = URL(string: "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json") else {
+                        finishOnMain([], "Invalid Mojang manifest URL")
+                        return
+                    }
+                    self.fetchJSON(manifestURL) { manRes in
+                        switch manRes {
+                        case .failure(let err):
+                            finishOnMain([], "Failed to load versions: \(err.localizedDescription)")
+                        case .success(let json2):
+                            guard let m = json2 as? [String: Any],
+                                  let versions = m["versions"] as? [[String: Any]]
+                            else {
+                                finishOnMain([], "Failed to parse version list")
+                                return
+                            }
+                            var releases: [String] = []
+                            for v in versions {
+                                guard let id = v["id"] as? String else { continue }
+                                let type = (v["type"] as? String) ?? ""
+                                if type == "release", supported.contains(id) {
+                                    releases.append(id)
+                                }
+                            }
+                            finishOnMain(releases, nil)
+                        }
+                    }
+                }
+            }
+            return
+
+        case .neoforge:
+            guard let metadataURL = URL(string: "https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml") else {
+                finishOnMain([], "Invalid NeoForge metadata URL")
+                return
+            }
+
+            fetchText(metadataURL) { metaRes in
+                switch metaRes {
+                case .failure(let err):
+                    finishOnMain([], "Failed to load NeoForge versions: \(err.localizedDescription)")
+                case .success(let xml):
+                    let neoVersions = self.extractMavenVersions(from: xml)
+                    var supportedMinorPatch = Set<String>()
+                    for v in neoVersions {
+                        let parts = v.split(separator: ".")
+                        if parts.count >= 2 {
+                            supportedMinorPatch.insert("\(parts[0]).\(parts[1])")
+                        }
+                    }
+
+                    guard let manifestURL = URL(string: "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json") else {
+                        finishOnMain([], "Invalid Mojang manifest URL")
+                        return
+                    }
+                    self.fetchJSON(manifestURL) { manRes in
+                        switch manRes {
+                        case .failure(let err):
+                            finishOnMain([], "Failed to load versions: \(err.localizedDescription)")
+                        case .success(let json2):
+                            guard let m = json2 as? [String: Any],
+                                  let versions = m["versions"] as? [[String: Any]]
+                            else {
+                                finishOnMain([], "Failed to parse version list")
+                                return
+                            }
+
+                            var releases: [String] = []
+                            for v in versions {
+                                guard let id = v["id"] as? String else { continue }
+                                let type = (v["type"] as? String) ?? ""
+                                if type != "release" { continue }
+
+                                let comps = id.split(separator: ".")
+                                if comps.count >= 3, comps[0] == "1" {
+                                    let key = "\(comps[1]).\(comps[2])"
+                                    if supportedMinorPatch.contains(key) {
+                                        releases.append(id)
+                                    }
+                                }
+                            }
+                            finishOnMain(releases, nil)
+                        }
+                    }
+                }
+            }
+            return
+
+        case .vanilla, .customJar:
+            break
+        }
+
+        let urlString = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
+        guard let url = URL(string: urlString) else {
+            finishOnMain([], "Invalid version URL")
+            return
+        }
+
+        URLSession.shared.dataTask(with: url) { data, _, error in
             if let error = error {
-                finish([], "Failed to load versions: \(error.localizedDescription)")
+                finishOnMain([], "Failed to load versions: \(error.localizedDescription)")
                 return
             }
 
@@ -499,7 +971,7 @@ struct CreateServerView: View {
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let versions = json["versions"] as? [[String: Any]]
             else {
-                finish([], "Failed to parse version list")
+                finishOnMain([], "Failed to parse version list")
                 return
             }
 
@@ -511,7 +983,7 @@ struct CreateServerView: View {
                 if type == "release" { releases.append(id) }
                 else { snapshots.append(id) }
             }
-            finish(releases + snapshots, nil)
+            finishOnMain(releases + snapshots, nil)
         }.resume()
     }
 
@@ -639,6 +1111,9 @@ struct CreateServerView: View {
         case .vanilla:
             setStatus("Downloading Vanilla...")
             downloadVanillaServerJar(mcVersion: mcVersion, to: serverDir, completion: completion)
+        case .paper:
+            setStatus("Downloading Paper...")
+            downloadPaperServerJar(mcVersion: mcVersion, to: serverDir, completion: completion)
         case .fabric:
             setStatus("Downloading Fabric...")
             downloadFabricServerJar(mcVersion: mcVersion, to: serverDir, completion: completion)
@@ -653,6 +1128,55 @@ struct CreateServerView: View {
             installNeoForge(mcVersion: mcVersion, to: serverDir, completion: completion)
         case .customJar:
             completion(.success(()))
+        }
+    }
+
+    private func downloadPaperServerJar(mcVersion: String, to serverDir: URL, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let buildsURL = URL(string: "https://api.papermc.io/v2/projects/paper/versions/\(mcVersion)/builds") else {
+            completion(.failure(InstallerError.message("Invalid Paper builds URL")))
+            return
+        }
+
+        fetchJSON(buildsURL) { result in
+            switch result {
+            case .failure(let err):
+                completion(.failure(err))
+            case .success(let json):
+                guard let dict = json as? [String: Any],
+                      let builds = dict["builds"] as? [[String: Any]],
+                      !builds.isEmpty
+                else {
+                    completion(.failure(InstallerError.message("No Paper builds found for \(mcVersion)")))
+                    return
+                }
+
+                let chosen = builds.max { a, b in
+                    (a["build"] as? Int ?? 0) < (b["build"] as? Int ?? 0)
+                } ?? builds.last!
+
+                guard let buildNumber = chosen["build"] as? Int else {
+                    completion(.failure(InstallerError.message("Failed to parse Paper build number")))
+                    return
+                }
+
+                var downloadName: String? = nil
+                if let downloads = chosen["downloads"] as? [String: Any],
+                   let app = downloads["application"] as? [String: Any],
+                   let name = app["name"] as? String {
+                    downloadName = name
+                }
+
+                let name = downloadName ?? "paper-\(mcVersion)-\(buildNumber).jar"
+                let encodedName = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
+
+                guard let jarURL = URL(string: "https://api.papermc.io/v2/projects/paper/versions/\(mcVersion)/builds/\(buildNumber)/downloads/\(encodedName)") else {
+                    completion(.failure(InstallerError.message("Invalid Paper download URL")))
+                    return
+                }
+
+                let dest = serverDir.appendingPathComponent("server.jar")
+                self.downloadFile(jarURL, to: dest, completion: completion)
+            }
         }
     }
 
@@ -696,6 +1220,32 @@ struct CreateServerView: View {
                 completion(.failure(error))
             }
         }.resume()
+    }
+
+    private func fetchText(_ url: URL, completion: @escaping (Result<String, Error>) -> Void) {
+        URLSession.shared.dataTask(with: url) { data, _, error in
+            if let error = error { completion(.failure(error)); return }
+            guard let data = data, let text = String(data: data, encoding: .utf8) else {
+                completion(.failure(InstallerError.message("Empty response")))
+                return
+            }
+            completion(.success(text))
+        }.resume()
+    }
+
+    private func isVersionHigher(_ a: String, than b: String) -> Bool {
+        func parts(_ s: String) -> [Int] {
+            s.split(separator: ".").map { Int($0) ?? -1 }
+        }
+        let pa = parts(a)
+        let pb = parts(b)
+        let n = max(pa.count, pb.count)
+        for i in 0..<n {
+            let va = i < pa.count ? pa[i] : 0
+            let vb = i < pb.count ? pb[i] : 0
+            if va != vb { return va > vb }
+        }
+        return a.localizedStandardCompare(b) == .orderedDescending
     }
 
     private func downloadVanillaServerJar(mcVersion: String, to serverDir: URL, completion: @escaping (Result<Void, Error>) -> Void) {

@@ -4,6 +4,7 @@ import SafariServices
 import Security
 import Darwin
 import Combine
+import Network
 
 private struct ScrollOffsetPreferenceKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
@@ -80,8 +81,8 @@ final class TunnelingModel: ObservableObject {
     struct ServiceInfo: Identifiable {
         let id: String
         let name: String
-        let fileName: String
-        let downloadURL: URL
+        let fileName: String?
+        let downloadURL: URL?
     }
 
     static let services: [ServiceInfo] = [
@@ -89,14 +90,20 @@ final class TunnelingModel: ObservableObject {
             id: "playit",
             name: "Playit",
             fileName: "libplayit_agent.dylib",
-            downloadURL: URL(string: "https://github.com/rooootdev/playit-ios/releases/download/latest/libplayit_agent.dylib")!
+            downloadURL: URL(string: "https://github.com/rooootdev/playit-ios/releases/download/latest/libplayit_agent.dylib")
+        ),
+        ServiceInfo(
+            id: "upnp",
+            name: "UPnP",
+            fileName: nil,
+            downloadURL: nil
+        ),
+        ServiceInfo(
+            id: "none",
+            name: "None",
+            fileName: nil,
+            downloadURL: nil
         )
-        // ServiceInfo(
-        //     id: "ngrok",
-        //     name: "Ngrok",
-        //     fileName: "libngrok_client.a",
-        //     downloadURL: URL(string: "https://github.com/rooootdev/playit-ios/releases/download/v1/libngrok_client.a")!
-        // )
     ]
 
     var allServices: [ServiceInfo] { Self.services }
@@ -137,10 +144,10 @@ final class TunnelingModel: ObservableObject {
     }
 
     private func serviceFileURL(for id: String) -> URL? {
-        guard let info = info(for: id) else { return nil }
+        guard let info = info(for: id), let fileName = info.fileName else { return nil }
         return servicesDir
             .appendingPathComponent(id, isDirectory: true)
-            .appendingPathComponent(info.fileName, isDirectory: false)
+            .appendingPathComponent(fileName, isDirectory: false)
     }
 
     private func serviceDir(for id: String) -> URL {
@@ -149,6 +156,7 @@ final class TunnelingModel: ObservableObject {
 
     func refreshInstalledServices() {
         let installed = allServices.compactMap { info -> String? in
+            if info.fileName == nil { return info.id }
             guard let fileURL = serviceFileURL(for: info.id) else { return nil }
             return FileManager.default.fileExists(atPath: fileURL.path) ? info.id : nil
         }
@@ -171,7 +179,7 @@ final class TunnelingModel: ObservableObject {
     }
 
     private func installOneService(id: String, completion: @escaping (Result<Void, Error>) -> Void) {
-        guard let info = info(for: id) else {
+        guard let info = info(for: id), let downloadURL = info.downloadURL, let fileName = info.fileName else {
             completion(.failure(NSError(domain: "JESSI", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unknown service: \(id)"])) )
             return
         }
@@ -179,9 +187,9 @@ final class TunnelingModel: ObservableObject {
         let fm = FileManager.default
         let tmpRoot = fm.temporaryDirectory.appendingPathComponent("jessi-tunneling-install", isDirectory: true)
         let workDir = tmpRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        let downloadPath = workDir.appendingPathComponent(info.fileName)
+        let downloadPath = workDir.appendingPathComponent(fileName)
 
-        let task = URLSession.shared.downloadTask(with: info.downloadURL) { tempURL, _, error in
+        let task = URLSession.shared.downloadTask(with: downloadURL) { tempURL, _, error in
             if let error {
                 completion(.failure(error))
                 return
@@ -203,7 +211,7 @@ final class TunnelingModel: ObservableObject {
                 if fm.fileExists(atPath: staging.path) { try? fm.removeItem(at: staging) }
                 try fm.createDirectory(at: staging, withIntermediateDirectories: true)
 
-                let stagedFile = staging.appendingPathComponent(info.fileName, isDirectory: false)
+                let stagedFile = staging.appendingPathComponent(fileName, isDirectory: false)
                 if fm.fileExists(atPath: stagedFile.path) { try? fm.removeItem(at: stagedFile) }
                 try fm.moveItem(at: downloadPath, to: stagedFile)
 
@@ -228,15 +236,18 @@ final class TunnelingModel: ObservableObject {
         services: [String],
         updateInProgress: @escaping (Bool) -> Void,
         updateQueueCSV: @escaping (String) -> Void,
-        clearSelection: @escaping () -> Void
+        clearSelection: @escaping () -> Void,
+        showErrors: Bool = true
     ) {
         let validIds = Set(allServices.map { $0.id })
-        let queue = services.filter(validIds.contains)
+        let queue = services.filter(validIds.contains).filter { info(for: $0)?.downloadURL != nil }
 
         func fail(_ message: String) {
-            DispatchQueue.main.async {
-                self.installErrorMessage = message
-                self.showInstallError = true
+            if showErrors {
+                DispatchQueue.main.async {
+                    self.installErrorMessage = message
+                    self.showInstallError = true
+                }
             }
             updateQueueCSV("")
             updateInProgress(false)
@@ -281,6 +292,27 @@ final class TunnelingModel: ObservableObject {
         updateInProgress(true)
         updateQueueCSV(queue.joined(separator: ","))
         next()
+    }
+
+    static func autoInstallPlayitIfNeeded() {
+        let defaults = UserDefaults.standard
+        let autoKey = "jessi.tunnel.autoInstall.started"
+        guard !defaults.bool(forKey: autoKey) else { return }
+        defaults.set(true, forKey: autoKey)
+
+        let model = TunnelingModel()
+        model.refreshInstalledServices()
+        if model.installedServiceIds.contains("playit") {
+            return
+        }
+
+        model.installServices(
+            services: ["playit"],
+            updateInProgress: { defaults.set($0, forKey: "jessi.tunnel.install.inProgress") },
+            updateQueueCSV: { defaults.set($0, forKey: "jessi.tunnel.install.queue") },
+            clearSelection: { defaults.set("", forKey: "jessi.tunnel.install.selection") },
+            showErrors: false
+        )
     }
 }
 
@@ -745,6 +777,381 @@ final class PlayitModel: ObservableObject {
     }
 }
 
+final class UpnpModel: ObservableObject {
+    @Published var isTesting: Bool = false
+    @Published var testResult: String? = nil
+    @Published var testSuccess: Bool? = nil
+    @Published var isApplying: Bool = false
+    @Published var statusMessage: String? = nil
+    @Published var statusSuccess: Bool? = nil
+
+    private var activeConnection: NWConnection? = nil
+    private var lastApplyTask: Task<Void, Never>? = nil
+
+    func test() {
+        if isTesting { return }
+        isTesting = true
+        testResult = nil
+        testSuccess = nil
+
+        let queue = DispatchQueue(label: "jessi.upnp.test")
+        let parameters = NWParameters.udp
+        parameters.allowLocalEndpointReuse = true
+
+        let connection = NWConnection(host: "239.255.255.250", port: 1900, using: parameters)
+        activeConnection = connection
+
+        let request = """
+        M-SEARCH * HTTP/1.1\r\nHOST:239.255.255.250:1900\r\nMAN:\"ssdp:discover\"\r\nMX:1\r\nST:urn:schemas-upnp-org:device:InternetGatewayDevice:1\r\n\r\n
+        """
+
+        connection.stateUpdateHandler = { [weak self] state in
+            guard let self else { return }
+            switch state {
+            case .ready:
+                let data = request.data(using: .utf8) ?? Data()
+                connection.send(content: data, completion: .contentProcessed { error in
+                    if let error {
+                        self.finish(success: false, message: "UPnP test failed: \(error.localizedDescription)")
+                        connection.cancel()
+                        return
+                    }
+
+                    connection.receiveMessage { data, _, _, error in
+                        if let error {
+                            self.finish(success: false, message: "UPnP test failed: \(error.localizedDescription)")
+                            connection.cancel()
+                            return
+                        }
+
+                        if let data, !data.isEmpty {
+                            self.finish(success: true, message: "UPnP gateway detected")
+                        }
+                        connection.cancel()
+                    }
+                })
+            case .failed(let error):
+                self.finish(success: false, message: "UPnP test failed: \(error.localizedDescription)")
+                connection.cancel()
+            default:
+                break
+            }
+        }
+
+        connection.start(queue: queue)
+
+        queue.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+            guard let self, self.isTesting else { return }
+            self.finish(success: false, message: "No UPnP gateway response")
+            connection.cancel()
+        }
+    }
+
+    private func finish(success: Bool, message: String) {
+        DispatchQueue.main.async {
+            self.isTesting = false
+            self.testSuccess = success
+            self.testResult = message
+            self.activeConnection = nil
+        }
+    }
+
+    func enablePorts(_ ports: [Int]) {
+        applyPorts(ports, action: .add)
+    }
+
+    func clearPorts(_ ports: [Int]) {
+        applyPorts(ports, action: .delete)
+    }
+
+    private enum MappingAction {
+        case add
+        case delete
+
+        var verb: String { self == .add ? "AddPortMapping" : "DeletePortMapping" }
+    }
+
+    private func applyPorts(_ ports: [Int], action: MappingAction) {
+        guard !isApplying else { return }
+        let uniquePorts = Array(Set(ports)).sorted()
+        guard !uniquePorts.isEmpty else {
+            updateStatus(success: false, message: "No valid ports provided")
+            return
+        }
+
+        isApplying = true
+        statusMessage = nil
+        statusSuccess = nil
+
+        lastApplyTask?.cancel()
+        lastApplyTask = Task { [weak self] in
+            guard let self else { return }
+            let result = await self.performMapping(action: action, ports: uniquePorts)
+            DispatchQueue.main.async {
+                self.isApplying = false
+                self.statusSuccess = result.success
+                self.statusMessage = result.message
+            }
+        }
+    }
+
+    private func updateStatus(success: Bool, message: String) {
+        DispatchQueue.main.async {
+            self.statusSuccess = success
+            self.statusMessage = message
+        }
+    }
+
+    private struct GatewayInfo {
+        let controlURL: URL
+        let serviceType: String
+    }
+
+    private struct MappingResult {
+        let success: Bool
+        let message: String
+    }
+
+    private func performMapping(action: MappingAction, ports: [Int]) async -> MappingResult {
+        guard let gateway = await discoverGateway() else {
+            return MappingResult(success: false, message: "UPnP gateway not found")
+        }
+
+        guard let localIP = localIPv4Address() else {
+            return MappingResult(success: false, message: "Unable to determine local IP")
+        }
+
+        for port in ports {
+            let protocols = ["TCP", "UDP"]
+            for proto in protocols {
+                let success = await sendPortMapping(
+                    action: action,
+                    gateway: gateway,
+                    externalPort: port,
+                    internalPort: port,
+                    protocolType: proto,
+                    internalClient: localIP
+                )
+                if !success {
+                    return MappingResult(success: false, message: "UPnP \(action == .add ? "enable" : "clear") failed for port \(port)")
+                }
+            }
+        }
+
+        let verb = action == .add ? "Enabled" : "Cleared"
+        return MappingResult(success: true, message: "\(verb) UPnP for ports \(ports.map(String.init).joined(separator: ", "))")
+    }
+
+    private func discoverGateway() async -> GatewayInfo? {
+        guard let response = await sendMSearch() else { return nil }
+        guard let locationURL = parseLocation(from: response) else { return nil }
+
+        guard let xmlData = try? await URLSession.shared.data(from: locationURL).0,
+              let xml = String(data: xmlData, encoding: .utf8) else {
+            return nil
+        }
+
+        if let control = findControlURL(in: xml, serviceType: "urn:schemas-upnp-org:service:WANIPConnection:1", baseURL: locationURL) {
+            return GatewayInfo(controlURL: control, serviceType: "urn:schemas-upnp-org:service:WANIPConnection:1")
+        }
+
+        if let control = findControlURL(in: xml, serviceType: "urn:schemas-upnp-org:service:WANPPPConnection:1", baseURL: locationURL) {
+            return GatewayInfo(controlURL: control, serviceType: "urn:schemas-upnp-org:service:WANPPPConnection:1")
+        }
+
+        return nil
+    }
+
+    private func sendMSearch() async -> String? {
+        await withCheckedContinuation { continuation in
+            let queue = DispatchQueue(label: "jessi.upnp.search")
+            var didResume = false
+            func resumeOnce(_ value: String?) {
+                if didResume { return }
+                didResume = true
+                continuation.resume(returning: value)
+            }
+            let parameters = NWParameters.udp
+            parameters.allowLocalEndpointReuse = true
+            let connection = NWConnection(host: "239.255.255.250", port: 1900, using: parameters)
+
+            let request = """
+            M-SEARCH * HTTP/1.1\r\nHOST:239.255.255.250:1900\r\nMAN:\"ssdp:discover\"\r\nMX:1\r\nST:urn:schemas-upnp-org:device:InternetGatewayDevice:1\r\n\r\n
+            """
+
+            connection.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    let data = request.data(using: .utf8) ?? Data()
+                    connection.send(content: data, completion: .contentProcessed { error in
+                        if error != nil {
+                            resumeOnce(nil)
+                            connection.cancel()
+                            return
+                        }
+
+                        connection.receiveMessage { data, _, _, _ in
+                            if let data, let text = String(data: data, encoding: .utf8) {
+                                resumeOnce(text)
+                            } else {
+                                resumeOnce(nil)
+                            }
+                            connection.cancel()
+                        }
+                    })
+                case .failed:
+                    resumeOnce(nil)
+                    connection.cancel()
+                default:
+                    break
+                }
+            }
+
+            connection.start(queue: queue)
+
+            queue.asyncAfter(deadline: .now() + 2.5) {
+                resumeOnce(nil)
+                connection.cancel()
+            }
+        }
+    }
+
+    private func parseLocation(from response: String) -> URL? {
+        let lines = response.split(separator: "\n")
+        for line in lines {
+            let parts = line.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: true)
+            guard parts.count == 2 else { continue }
+            if parts[0].trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "location" {
+                let value = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+                return URL(string: value)
+            }
+        }
+        return nil
+    }
+
+    private func findControlURL(in xml: String, serviceType: String, baseURL: URL) -> URL? {
+        guard let serviceRange = xml.range(of: "<serviceType>\(serviceType)</serviceType>") else {
+            return nil
+        }
+
+        let tail = xml[serviceRange.lowerBound...]
+        guard let serviceEnd = tail.range(of: "</service>") else { return nil }
+        let serviceBlock = tail[..<serviceEnd.upperBound]
+
+        guard let controlStart = serviceBlock.range(of: "<controlURL>")?.upperBound,
+              let controlEnd = serviceBlock.range(of: "</controlURL>")?.lowerBound else {
+            return nil
+        }
+
+        let controlText = String(serviceBlock[controlStart..<controlEnd]).trimmingCharacters(in: .whitespacesAndNewlines)
+        if let url = URL(string: controlText) {
+            if url.scheme != nil { return url }
+            return URL(string: controlText, relativeTo: baseURL)?.absoluteURL
+        }
+        return nil
+    }
+
+    private func sendPortMapping(
+        action: MappingAction,
+        gateway: GatewayInfo,
+        externalPort: Int,
+        internalPort: Int,
+        protocolType: String,
+        internalClient: String
+    ) async -> Bool {
+        let soapBody: String
+        if action == .add {
+            soapBody = """
+            <?xml version=\"1.0\"?>
+            <s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">
+              <s:Body>
+                <u:AddPortMapping xmlns:u=\"\(gateway.serviceType)\">
+                  <NewRemoteHost></NewRemoteHost>
+                  <NewExternalPort>\(externalPort)</NewExternalPort>
+                  <NewProtocol>\(protocolType)</NewProtocol>
+                  <NewInternalPort>\(internalPort)</NewInternalPort>
+                  <NewInternalClient>\(internalClient)</NewInternalClient>
+                  <NewEnabled>1</NewEnabled>
+                  <NewPortMappingDescription>JESSI</NewPortMappingDescription>
+                  <NewLeaseDuration>0</NewLeaseDuration>
+                </u:AddPortMapping>
+              </s:Body>
+            </s:Envelope>
+            """
+        } else {
+            soapBody = """
+            <?xml version=\"1.0\"?>
+            <s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">
+              <s:Body>
+                <u:DeletePortMapping xmlns:u=\"\(gateway.serviceType)\">
+                  <NewRemoteHost></NewRemoteHost>
+                  <NewExternalPort>\(externalPort)</NewExternalPort>
+                  <NewProtocol>\(protocolType)</NewProtocol>
+                </u:DeletePortMapping>
+              </s:Body>
+            </s:Envelope>
+            """
+        }
+
+        var request = URLRequest(url: gateway.controlURL)
+        request.httpMethod = "POST"
+        request.setValue("text/xml; charset=\"utf-8\"", forHTTPHeaderField: "Content-Type")
+        request.setValue("\"\(gateway.serviceType)#\(action.verb)\"", forHTTPHeaderField: "SOAPAction")
+        request.httpBody = soapBody.data(using: .utf8)
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if (200...299).contains(status) {
+                return true
+            }
+
+            if status == 500, let body = String(data: data, encoding: .utf8) {
+                if action == .delete, body.contains("<errorCode>714</errorCode>") {
+                    return true
+                }
+                if action == .add, body.contains("<errorCode>718</errorCode>") {
+                    return true
+                }
+            }
+            return false
+        } catch {
+            return false
+        }
+    }
+
+    private func localIPv4Address() -> String? {
+        var address: String? = nil
+        var ifaddr: UnsafeMutablePointer<ifaddrs>? = nil
+        guard getifaddrs(&ifaddr) == 0, let first = ifaddr else { return nil }
+        defer { freeifaddrs(ifaddr) }
+
+        var ptr = first
+        while true {
+            let iface = ptr.pointee
+            let family = iface.ifa_addr.pointee.sa_family
+            if family == UInt8(AF_INET) {
+                let name = String(cString: iface.ifa_name)
+                if name == "en0" || name == "pdp_ip0" {
+                    var addr = iface.ifa_addr.pointee
+                    var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                    if getnameinfo(&addr, socklen_t(addr.sa_len), &hostname, socklen_t(hostname.count), nil, 0, NI_NUMERICHOST) == 0 {
+                        address = String(cString: hostname)
+                        break
+                    }
+                }
+            }
+            if let next = ptr.pointee.ifa_next {
+                ptr = next
+            } else {
+                break
+            }
+        }
+
+        return address
+    }
+}
+
 private enum PlayitStatusCode: Int32 {
     case stopped = 0
     case connecting = 1
@@ -804,7 +1211,7 @@ struct TunnelingView: View {
     @State private var showlogs: Bool = false
     @State private var showstatusinfo: Bool = false
     @State private var infotheusercouldmaybefinduseful: String = ""
-    
+
     @State private var scrollviewheight: CGFloat = 0
     @State private var contentheight: CGFloat = 0
     @State private var scrolloffset: CGFloat = 0
@@ -848,13 +1255,13 @@ struct TunnelingView: View {
                 tunnelingSection
                 playitSection
             }
-            
+
             if playitmodel.claiming {
                 console
             }
-            
+
             Spacer()
-            
+
             startPlayitButton
         }
         .listStyle(InsetGroupedListStyle())
@@ -892,13 +1299,6 @@ struct TunnelingView: View {
         }
         .sheet(isPresented: $showlogs) {
             LogsViewSheet(logger: tunnelinglogger)
-        }
-        .alert(isPresented: $showstatusinfo) {
-            Alert(
-                title: Text("Playit Status"),
-                message: Text("Disconnected: The Playit agent is not started yet. \nConnecting: The agent started and is negotiating a control session with Playit. It should switch to Connected once the tunnel is ready and an address is assigned. \nConnected: The agent is fully connected to the tunnel and can send and receive data."),
-                dismissButton: .default(Text("OK"))
-            )
         }
         .onAppear {
             model.refreshInstalledServices()
@@ -1098,13 +1498,9 @@ struct TunnelingView: View {
                     Spacer()
                     Text(playitmodel.status)
                         .foregroundColor(playitmodel.status.lowercased().contains("disconnected") ? .secondary : .green)
-                    Button(action: { showstatusinfo = true }) {
-                        Image(systemName: "info.circle")
-                            .foregroundColor(.secondary)
-                    }
                     .buttonStyle(BorderlessButtonStyle())
                 }
-                
+
                 if let address = playitmodel.lastaddr, !address.isEmpty {
                     HStack {
                         Text("Address")
@@ -1123,7 +1519,7 @@ struct TunnelingView: View {
                         .buttonStyle(BorderlessButtonStyle())
                     }
                 }
-                
+
                 Button(action: {
                     if !playitmodel.linked {
                         playitmodel.beginClaimFlow()
@@ -1139,7 +1535,7 @@ struct TunnelingView: View {
                     }
                 }
                 .buttonStyle(PlainButtonStyle())
-                
+
                 Button("Reset Playit Link") {
                     playitmodel.resetlink()
                 }
@@ -1149,7 +1545,7 @@ struct TunnelingView: View {
             } header: {
                 Text("Playit")
             } footer: {
-                Text("Playit runs only while your server is running. Link your account to get a public address.")
+                Text("Playit starts at the same time as your server. Link your account to get a public address.")
             }
         }
     }
@@ -1179,19 +1575,19 @@ struct TunnelingView: View {
         .buttonStyle(PlainButtonStyle())
         .disabled(startDisabled)
     }
-    
+
     private var console: some View {
         VStack {
             HStack {
                 Spacer()
-                
+
                 Button("Cancel") {
                     playitmodel.cancelClaimFlow()
                 }
                 .foregroundColor(.red)
                 .buttonStyle(BorderlessButtonStyle())
             }
-            
+
             GroupBox {
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -1213,11 +1609,10 @@ struct TunnelingView: View {
                                      ? "Claiming…"
                                      : playitmodel.claimstatus)
                                 .foregroundColor(.secondary)
-                                
+
                                 Spacer()
                             }
-                            
-                            // Bottom anchor
+
                             Color.clear
                                 .frame(height: 1)
                                 .id("BOTTOM")
@@ -1270,7 +1665,7 @@ struct TunnelingView: View {
         }
         .padding(.horizontal, 16)
     }
-    
+
     private var createButtonBottomPadding: CGFloat {
         24
     }
@@ -1307,4 +1702,415 @@ private struct SafariView: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: SFSafariViewController, context: Context) {}
+}
+
+struct ConnectionSectionView: View {
+    @StateObject private var model = TunnelingModel()
+    @StateObject private var playitmodel = PlayitModel()
+    @StateObject private var upnpmodel = UpnpModel()
+    @AppStorage("jessi.server.running") private var serverRunning: Bool = false
+    @AppStorage("jessi.tunnel.install.inProgress") private var installInProgress: Bool = false
+    @AppStorage("jessi.tunnel.install.queue") private var installQueueCSV: String = ""
+    @AppStorage("jessi.upnp.ports") private var upnpPortsCSV: String = "25565"
+
+    @State private var didAutoResumeInstall: Bool = false
+    @State private var showclaim: Bool = false
+    @State private var showlogs: Bool = false
+    @State private var showstatusinfo: Bool = false
+    @State private var upnpPortsIsFirstResponder: Bool = false
+
+    private var installQueue: Set<String> {
+        Set(installQueueCSV.split(separator: ",").map(String.init))
+    }
+
+    private var isPlayitInstalling: Bool {
+        installInProgress && installQueue.contains("playit")
+    }
+
+    private var isUpnpSelected: Bool {
+        model.selectedServiceId == "upnp"
+    }
+
+    private var isNoneSelected: Bool {
+        model.selectedServiceId == "none"
+    }
+
+    var body: some View {
+        Group {
+            Section {
+                serviceRow
+
+                if isNoneSelected {
+                    noneSelectedRow
+                } else if isUpnpSelected {
+                    upnpPortsRow
+                    upnpTestRow
+                    upnpClearRow
+                    upnpResultRow
+                } else {
+                    if playitmodel.islibrarypresent {
+                        statusRow
+
+                        if let address = playitmodel.lastaddr, !address.isEmpty {
+                            addressRow(address)
+                        }
+
+                        linkRow
+                        resetRow
+                        startRow
+                    } else {
+                        installStatusRow
+                        if !isPlayitInstalling {
+                            retryInstallRow
+                        }
+                    }
+                }
+            } header: {
+                Text("Connection")
+            } footer: {
+                connectionFooter
+            }
+        }
+        .sheet(isPresented: $showclaim) {
+            if let url = URL(string: playitmodel.claimurl), !playitmodel.claimurl.isEmpty {
+                SafariView(url: url)
+                    .ignoresSafeArea()
+            }
+        }
+        .sheet(isPresented: $showlogs) {
+            LogsViewSheet(logger: tunnelinglogger)
+        }
+        .alert(isPresented: $model.showInstallError) {
+            Alert(
+                title: Text("Tunneling Install Failed"),
+                message: Text(model.installErrorMessage ?? "Unknown error"),
+                dismissButton: .default(Text("OK"))
+            )
+        }
+        .alert(isPresented: $playitmodel.showinvalidkeyalert) {
+            Alert(
+                title: Text("Playit Link Invalid"),
+                message: Text("Your Playit link is invalid or expired. Please link again."),
+                dismissButton: .default(Text("OK"))
+            )
+        }
+        .onAppear {
+            model.refreshInstalledServices()
+            model.refreshAvailableServices()
+            playitmodel.refresh()
+            playitmodel.startstatuspolling()
+            resumeInstallIfNeeded()
+        }
+        .onDisappear {
+            playitmodel.stopstatuspolling()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            playitmodel.refresh()
+        }
+        .onChange(of: installInProgress) { newValue in
+            if !newValue {
+                model.refreshInstalledServices()
+                model.refreshAvailableServices()
+                playitmodel.refresh()
+                autoStartIfNeeded()
+            }
+        }
+        .onChange(of: serverRunning) { newValue in
+            if newValue {
+                autoStartIfNeeded()
+                applyUpnpIfNeeded()
+            }
+        }
+        .onChange(of: playitmodel.linked) { _ in
+            autoStartIfNeeded()
+        }
+        .onChange(of: playitmodel.islibrarypresent) { _ in
+            autoStartIfNeeded()
+        }
+        .onChange(of: upnpPortsCSV) { _ in
+            applyUpnpIfNeeded()
+        }
+    }
+
+    private var serviceRow: some View {
+        HStack(alignment: .center, spacing: 2.5) {
+            Text("Service")
+            Spacer()
+            if model.availableServiceIds.isEmpty {
+                if isPlayitInstalling {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle())
+                    Text("Installing…")
+                        .foregroundColor(.secondary)
+                } else {
+                    Text("Unavailable")
+                        .foregroundColor(.secondary)
+                }
+            } else {
+                Picker("Tunneling", selection: $model.selectedServiceId) {
+                    ForEach(model.availableServiceIds, id: \.self) { id in
+                        Text(model.displayName(for: id)).tag(id)
+                    }
+                }
+                .pickerStyle(SegmentedPickerStyle())
+                .frame(maxWidth: 260)
+            }
+        }
+        .onChange(of: model.selectedServiceId) { newValue in
+            model.applyAndSaveSelectedService(newValue)
+            autoStartIfNeeded()
+        }
+    }
+
+    @ViewBuilder
+    private var connectionFooter: some View {
+        if #available(iOS 15.0, *) {
+            Text(makeConnectionFooterAttributedText())
+        } else {
+            Text(connectionFooterPlainText)
+        }
+    }
+
+    private var connectionFooterPlainText: String {
+        "Allow people outside of your local network to connect to your server. For more information, check the GitHub README."
+    }
+
+    @available(iOS 15.0, *)
+    private func makeConnectionFooterAttributedText() -> AttributedString {
+        var text = AttributedString(connectionFooterPlainText)
+        if let range = text.range(of: "check the GitHub README.") {
+            text[range].link = URL(string: "https://github.com/Baconium/JESSI")
+            text[range].underlineStyle = .single
+            text[range].foregroundColor = .gray
+        }
+        return text
+    }
+
+    private var statusRow: some View {
+        HStack {
+            Text("Status")
+            Spacer()
+            Text(playitmodel.status)
+                .foregroundColor(playitmodel.status.lowercased().contains("disconnected") ? .secondary : .green)
+            .buttonStyle(BorderlessButtonStyle())
+        }
+    }
+
+    private var noneSelectedRow: some View {
+        HStack {
+            Text("Use LAN or port forward manually")
+                .foregroundColor(.secondary)
+            Spacer()
+        }
+    }
+
+    private func addressRow(_ address: String) -> some View {
+        HStack {
+            Text("Address")
+            Spacer()
+            Text(address)
+                .font(.system(size: 14, design: .monospaced))
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Button(action: {
+                UIPasteboard.general.string = address
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }) {
+                Image(systemName: "doc.on.doc")
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(BorderlessButtonStyle())
+        }
+    }
+
+    private var linkRow: some View {
+        Button(action: {
+            if !playitmodel.linked {
+                playitmodel.beginClaimFlow()
+            }
+            showclaim = true
+        }) {
+            HStack {
+                Text(playitmodel.linked ? "Manage Playit" : "Link Playit")
+                    .foregroundColor(.primary)
+                Spacer()
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    private var resetRow: some View {
+        Button("Reset Playit Link") {
+            playitmodel.resetlink()
+        }
+        .disabled(!playitmodel.linked)
+        .foregroundColor(.red)
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    private var startRow: some View {
+        let startDisabled = !serverRunning || !playitmodel.linked || !playitmodel.islibrarypresent || playitmodel.isstarting
+        return Button(action: {
+            playitmodel.startifpossible()
+        }) {
+            HStack(spacing: 10) {
+                if playitmodel.isstarting {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle())
+                }
+                Text(playitmodel.isstarting ? "Starting…" : "Start Playit")
+                    .font(.system(size: 17, weight: .semibold))
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .disabled(startDisabled)
+    }
+
+    private var upnpPortsRow: some View {
+        HStack {
+            Text("Ports")
+            Spacer()
+            FocusableDoneToolbarTextField(
+                text: $upnpPortsCSV,
+                isFirstResponder: $upnpPortsIsFirstResponder,
+                placeholder: "25565,25575",
+                keyboardType: .numbersAndPunctuation,
+                textAlignment: .right,
+                font: .systemFont(ofSize: 16)
+            )
+            .frame(width: 160)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            upnpPortsIsFirstResponder = true
+        }
+    }
+
+    private var upnpTestRow: some View {
+        Button(action: {
+            upnpmodel.enablePorts(parsePorts())
+            upnpmodel.test()
+        }) {
+            HStack(spacing: 10) {
+                if upnpmodel.isTesting {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle())
+                }
+                Text(upnpmodel.isTesting ? "Testing…" : "Test UPnP")
+                    .font(.system(size: 17, weight: .semibold))
+                Spacer()
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .disabled(upnpmodel.isTesting)
+    }
+
+    private var upnpClearRow: some View {
+        Button(action: {
+            upnpmodel.clearPorts(parsePorts())
+        }) {
+            HStack(spacing: 10) {
+                if upnpmodel.isApplying {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle())
+                }
+                Text(upnpmodel.isApplying ? "Clearing…" : "Clear UPnP Ports")
+                    .font(.system(size: 17, weight: .semibold))
+                Spacer()
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .disabled(upnpmodel.isApplying)
+    }
+
+    @ViewBuilder
+    private var upnpResultRow: some View {
+        if let result = upnpmodel.testResult ?? upnpmodel.statusMessage {
+            HStack {
+                Text(result)
+                    .foregroundColor((upnpmodel.testSuccess ?? upnpmodel.statusSuccess ?? false) ? .green : .secondary)
+                Spacer()
+            }
+        }
+    }
+
+    private var installStatusRow: some View {
+        HStack {
+            Text("Playit")
+            Spacer()
+            if isPlayitInstalling {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle())
+                Text("Installing…")
+                    .foregroundColor(.secondary)
+            } else {
+                Text("Not installed")
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+
+    private var retryInstallRow: some View {
+        Button("Retry Playit Download") {
+            startPlayitInstall(showErrors: true)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    private func startPlayitInstall(showErrors: Bool) {
+        model.installServices(
+            services: ["playit"],
+            updateInProgress: { installInProgress = $0 },
+            updateQueueCSV: { installQueueCSV = $0 },
+            clearSelection: { },
+            showErrors: showErrors
+        )
+    }
+
+    private func resumeInstallIfNeeded() {
+        guard !didAutoResumeInstall, installInProgress else { return }
+        didAutoResumeInstall = true
+        let queue = installQueue
+        guard !queue.isEmpty else { return }
+
+        model.installServices(
+            services: Array(queue),
+            updateInProgress: { installInProgress = $0 },
+            updateQueueCSV: { installQueueCSV = $0 },
+            clearSelection: { },
+            showErrors: false
+        )
+    }
+
+    private func autoStartIfNeeded() {
+        guard model.selectedServiceId == "playit" else { return }
+        guard serverRunning else { return }
+        guard playitmodel.linked else { return }
+        guard playitmodel.islibrarypresent else { return }
+        playitmodel.startifpossible()
+    }
+
+    private func applyUpnpIfNeeded() {
+        guard isUpnpSelected else { return }
+        guard serverRunning else { return }
+        upnpmodel.enablePorts(parsePorts())
+    }
+
+    private func parsePorts() -> [Int] {
+        let parts = upnpPortsCSV.split { ",; \n\t".contains($0) }
+        var out: [Int] = []
+        for part in parts {
+            let trimmed = part.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let value = Int(trimmed), (1...65535).contains(value) {
+                if !out.contains(value) { out.append(value) }
+            }
+        }
+        return out
+    }
 }

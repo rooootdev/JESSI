@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import UIKit
 
 struct FileBrowserView: View {
     let directory: String
@@ -13,6 +14,12 @@ struct FileBrowserView: View {
     @State private var showImportError: Bool = false
     
     @State private var modsSheetItem: SheetItem? = nil
+
+    @State private var renameTarget: FileItem? = nil
+    @State private var renameText: String = ""
+    @State private var showingRenameSheet: Bool = false
+
+    @State private var shareItem: ShareItem? = nil
     
     private enum BrowserAlert: Identifiable {
         case confirmDelete(FileItem)
@@ -36,6 +43,28 @@ struct FileBrowserView: View {
         let modDate: Date
     }
 
+    private struct ShareItem: Identifiable {
+        let id = UUID()
+        let url: URL
+    }
+
+    private struct ShareSheet: UIViewControllerRepresentable {
+        let activityItems: [Any]
+
+        func makeUIViewController(context: Context) -> UIActivityViewController {
+            let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+            if let popover = controller.popoverPresentationController {
+                let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene
+                let window = scene?.windows.first(where: { $0.isKeyWindow }) ?? scene?.windows.first
+                popover.sourceView = window
+                popover.sourceRect = window?.bounds ?? .zero
+            }
+            return controller
+        }
+
+        func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+    }
+
     var body: some View {
         ZStack(alignment: .bottom) {
             List {
@@ -44,7 +73,7 @@ struct FileBrowserView: View {
                         NavigationLink(destination: fileDestination(for: file)) {
                             HStack(spacing: 12) {
                                 Image(systemName: file.isDirectory ? "folder.fill" : "doc.text.fill")
-                                    .foregroundColor(file.isDirectory ? .blue : .gray)
+                                    .foregroundColor(file.isDirectory ? .green : .gray)
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(file.name)
                                         .font(.system(size: 16, weight: .medium))
@@ -53,6 +82,19 @@ struct FileBrowserView: View {
                                         .foregroundColor(.secondary)
                                 }
                                 Spacer()
+                            }
+                        }
+                        .contextMenu {
+                            Button {
+                                shareItem = ShareItem(url: URL(fileURLWithPath: file.path))
+                            } label: {
+                                Label("Share", systemImage: "square.and.arrow.up")
+                            }
+                            Button(action: { beginRename(file) }) {
+                                Label("Rename", systemImage: "pencil")
+                            }
+                            Button(action: { beginDelete(file) }) {
+                                Label("Delete", systemImage: "trash")
                             }
                         }
                     }
@@ -85,7 +127,7 @@ struct FileBrowserView: View {
             .foregroundColor(.white)
             .background(Color.green)
             .cornerRadius(14)
-            .shadow(color: Color.black.opacity(1.0), radius: 8, x: 0, y: 6)
+            .shadow(color: Color.black.opacity(0.5), radius: 8, x: 0, y: 4)
             .padding(.horizontal, 16)
             .padding(.bottom, createButtonBottomPadding)
         }
@@ -110,6 +152,31 @@ struct FileBrowserView: View {
         .sheet(item: $modsSheetItem) { item in
             NavigationView {
                 ModsView(servername: item.input)
+            }
+        }
+        .sheet(item: $shareItem) { item in
+            ShareSheet(activityItems: [item.url])
+        }
+        .sheet(isPresented: $showingRenameSheet) {
+            NavigationView {
+                Form {
+                    Section(header: Text(renameTarget?.isDirectory == true ? "Rename Folder" : "Rename File")) {
+                        TextField("Name", text: $renameText)
+                            .autocapitalization(.none)
+                            .disableAutocorrection(true)
+                    }
+                }
+                .navigationTitle("Rename")
+                .navigationBarTitleDisplayMode(.inline)
+                .navigationBarItems(
+                    leading: Button("Cancel") { showingRenameSheet = false },
+                    trailing: Button("Save") {
+                        if let target = renameTarget {
+                            renameItem(target, newName: renameText)
+                        }
+                        showingRenameSheet = false
+                    }
+                )
             }
         }
         .alert(item: $alert) { a in
@@ -153,6 +220,20 @@ struct FileBrowserView: View {
         }
     }
 
+    private func beginRename(_ item: FileItem) {
+        renameTarget = item
+        renameText = item.name
+        showingRenameSheet = true
+    }
+
+    private func beginDelete(_ item: FileItem) {
+        alert = .confirmDelete(item)
+    }
+
+    private func showError(_ message: String) {
+        alert = .error(message)
+    }
+
     @ViewBuilder
     private func fileDestination(for file: FileItem) -> some View {
         if file.isDirectory {
@@ -188,7 +269,29 @@ struct FileBrowserView: View {
             try fm.removeItem(atPath: item.path)
             reload()
         } catch {
-            alert = .error(error.localizedDescription)
+            showError(error.localizedDescription)
+        }
+    }
+
+    private func renameItem(_ item: FileItem, newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard trimmed != item.name else { return }
+
+        let parent = (item.path as NSString).deletingLastPathComponent
+        let newPath = (parent as NSString).appendingPathComponent(trimmed)
+
+        let fm = FileManager.default
+        if fm.fileExists(atPath: newPath) {
+            showError("An item named \"\(trimmed)\" already exists.")
+            return
+        }
+
+        do {
+            try fm.moveItem(atPath: item.path, toPath: newPath)
+            reload()
+        } catch {
+            showError(error.localizedDescription)
         }
     }
 
@@ -261,7 +364,12 @@ struct TextEditorView: View {
     @State private var errorMsg: String? = nil
     
     @State private var ogcontent: String = ""
-    @State private var showDiscardConfirm = false
+    @State private var showUnsavedExitConfirm = false
+    @Environment(\.presentationMode) var presentationMode
+
+    var hasUnsavedChanges: Bool {
+        content != ogcontent
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -275,50 +383,42 @@ struct TextEditorView: View {
                     .foregroundColor(.red)
                     .padding()
             }
-
-            HStack {
-                Button("Discard") {
-                    if content != ogcontent {
-                        showDiscardConfirm = true
-                    } else {
-                        discardchanges()
-                    }
-                }
-                .foregroundColor(.red)
-
-                Spacer()
-
-                Button(action: save) {
-                    if isSaving {
-                        ProgressView()
-                            .progressViewStyle(.circular)
-                    } else {
-                        Text("Save")
-                    }
-                }
-                .foregroundColor(.blue)
-                .disabled(isSaving)
-            }
-            .padding()
-            .background(Color(.systemGray6))
         }
-        .navigationBarTitle(title, displayMode: .inline)
+        .navigationBarTitle("\(title)\(hasUnsavedChanges ? " *" : "")", displayMode: .inline)
+        .navigationBarBackButtonHidden(false)
+        .navigationBarItems(trailing: Button(action: save) {
+            if isSaving {
+                ProgressView()
+                    .progressViewStyle(.circular)
+            } else {
+                Text("Save")
+                    .foregroundColor(.green)
+            }
+        }
+        .disabled(isSaving))
         .onAppear { loadFile() }
-        .alert(isPresented: $showDiscardConfirm) {
+        .onDisappear { handleDisappear() }
+        .alert(isPresented: $showUnsavedExitConfirm) {
             Alert(
-                title: Text("Discard Changes?"),
-                message: Text("Your unsaved edits will be lost."),
-                primaryButton: .destructive(Text("Discard")) {
-                    discardchanges()
+                title: Text("Unsaved Changes"),
+                message: Text("Do you want to save your changes before leaving?"),
+                primaryButton: .default(Text("Save")) {
+                    save()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                        presentationMode.wrappedValue.dismiss()
+                    }
                 },
-                secondaryButton: .cancel()
+                secondaryButton: .destructive(Text("Discard")) {
+                    presentationMode.wrappedValue.dismiss()
+                }
             )
         }
     }
     
-    private func discardchanges() {
-        errorMsg = nil
-        loadFile()
+    private func handleDisappear() {
+        if hasUnsavedChanges {
+            showUnsavedExitConfirm = true
+        }
     }
 
     private func loadFile() {

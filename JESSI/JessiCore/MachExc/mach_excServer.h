@@ -1,7 +1,7 @@
 #ifndef	_mach_exc_user_
 #define	_mach_exc_user_
 
-/* Module mach_exc */
+
 
 #include <string.h>
 #include <mach/ndr.h>
@@ -13,7 +13,7 @@
 #include <mach/mig_errors.h>
 #include <mach/port.h>
 	
-/* BEGIN VOUCHER CODE */
+
 
 #ifndef KERNEL
 #if defined(__has_include)
@@ -33,15 +33,15 @@ extern "C" {
 #ifdef __cplusplus
 }
 #endif
-#endif // __VOUCHER_FORWARD_TYPE_DECLS__
-#endif // __has_include(<mach/mach_voucher_types.h>)
-#endif // __has_include
-#endif // !KERNEL
+#endif 
+#endif 
+#endif 
+#endif 
 	
-/* END VOUCHER CODE */
+
 
 	
-/* BEGIN MIG_STRNCPY_ZEROFILL CODE */
+
 
 #if defined(__has_include)
 #if __has_include(<mach/mig_strncpy_zerofill_support.h>)
@@ -60,11 +60,11 @@ extern "C" {
 #ifdef __cplusplus
 }
 #endif
-#endif /* __MIG_STRNCPY_ZEROFILL_FORWARD_TYPE_DECLS__ */
-#endif /* __has_include(<mach/mig_strncpy_zerofill_support.h>) */
-#endif /* __has_include */
+#endif 
+#endif 
+#endif 
 	
-/* END MIG_STRNCPY_ZEROFILL CODE */
+
 
 
 #ifdef AUTOTEST
@@ -76,12 +76,12 @@ typedef struct {
         function_ptr_t  function;
 } function_table_entry;
 typedef function_table_entry   *function_table_t;
-#endif /* FUNCTION_PTR_T */
-#endif /* AUTOTEST */
+#endif 
+#endif 
 
 #ifndef	mach_exc_MSG_COUNT
 #define	mach_exc_MSG_COUNT	6
-#endif	/* mach_exc_MSG_COUNT */
+#endif	
 
 #include <Availability.h>
 #include <mach/std_types.h>
@@ -91,18 +91,18 @@ typedef function_table_entry   *function_table_t;
 
 #ifdef __BeforeMigUserHeader
 __BeforeMigUserHeader
-#endif /* __BeforeMigUserHeader */
+#endif 
 
 #include <sys/cdefs.h>
 __BEGIN_DECLS
 
 
-/* Routine mach_exception_raise */
+
 #ifdef	mig_external
 mig_external
 #else
 extern
-#endif	/* mig_external */
+#endif	
 kern_return_t mach_exception_raise
 (
 	mach_port_t exception_port,
@@ -113,12 +113,12 @@ kern_return_t mach_exception_raise
 	mach_msg_type_number_t codeCnt
 );
 
-/* Routine mach_exception_raise_state */
+
 #ifdef	mig_external
 mig_external
 #else
 extern
-#endif	/* mig_external */
+#endif	
 kern_return_t mach_exception_raise_state
 (
 	mach_port_t exception_port,
@@ -132,12 +132,12 @@ kern_return_t mach_exception_raise_state
 	mach_msg_type_number_t *new_stateCnt
 );
 
-/* Routine mach_exception_raise_state_identity */
+
 #ifdef	mig_external
 mig_external
 #else
 extern
-#endif	/* mig_external */
+#endif	
 kern_return_t mach_exception_raise_state_identity
 (
 	mach_port_t exception_port,
@@ -155,18 +155,18 @@ kern_return_t mach_exception_raise_state_identity
 
 __END_DECLS
 
-/********************** Caution **************************/
-/* The following data types should be used to calculate  */
-/* maximum message sizes only. The actual message may be */
-/* smaller, and the position of the arguments within the */
-/* message layout may vary from what is presented here.  */
-/* For example, if any of the arguments are variable-    */
-/* sized, and less than the maximum is sent, the data    */
-/* will be packed tight in the actual message to reduce  */
-/* the presence of holes.                                */
-/********************** Caution **************************/
 
-/* typedefs for all requests */
+
+
+
+
+
+
+
+
+
+
+
 
 #ifndef __Request__mach_exc_subsystem__defined
 #define __Request__mach_exc_subsystem__defined
@@ -176,11 +176,11 @@ __END_DECLS
 #endif
 	typedef struct {
 		mach_msg_header_t Head;
-		/* start of the kernel processed data */
+		
 		mach_msg_body_t msgh_body;
 		mach_msg_port_descriptor_t thread;
 		mach_msg_port_descriptor_t task;
-		/* end of the kernel processed data */
+		
 		NDR_record_t NDR;
 		exception_type_t exception;
 		mach_msg_type_number_t codeCnt;
@@ -212,11 +212,11 @@ __END_DECLS
 #endif
 	typedef struct {
 		mach_msg_header_t Head;
-		/* start of the kernel processed data */
+		
 		mach_msg_body_t msgh_body;
 		mach_msg_port_descriptor_t thread;
 		mach_msg_port_descriptor_t task;
-		/* end of the kernel processed data */
+		
 		NDR_record_t NDR;
 		exception_type_t exception;
 		mach_msg_type_number_t codeCnt;
@@ -228,9 +228,9 @@ __END_DECLS
 #ifdef  __MigPackStructs
 #pragma pack(pop)
 #endif
-#endif /* !__Request__mach_exc_subsystem__defined */
+#endif 
 
-/* union of all requests */
+
 
 #ifndef __RequestUnion__mach_exc_subsystem__defined
 #define __RequestUnion__mach_exc_subsystem__defined
@@ -239,8 +239,8 @@ union __RequestUnion__mach_exc_subsystem {
 	__Request__mach_exception_raise_state_t Request_mach_exception_raise_state;
 	__Request__mach_exception_raise_state_identity_t Request_mach_exception_raise_state_identity;
 };
-#endif /* !__RequestUnion__mach_exc_subsystem__defined */
-/* typedefs for all replies */
+#endif 
+
 
 #ifndef __Reply__mach_exc_subsystem__defined
 #define __Reply__mach_exc_subsystem__defined
@@ -286,9 +286,9 @@ union __RequestUnion__mach_exc_subsystem {
 #ifdef  __MigPackStructs
 #pragma pack(pop)
 #endif
-#endif /* !__Reply__mach_exc_subsystem__defined */
+#endif 
 
-/* union of all replies */
+
 
 #ifndef __ReplyUnion__mach_exc_subsystem__defined
 #define __ReplyUnion__mach_exc_subsystem__defined
@@ -297,7 +297,7 @@ union __ReplyUnion__mach_exc_subsystem {
 	__Reply__mach_exception_raise_state_t Reply_mach_exception_raise_state;
 	__Reply__mach_exception_raise_state_identity_t Reply_mach_exception_raise_state_identity;
 };
-#endif /* !__RequestUnion__mach_exc_subsystem__defined */
+#endif 
 
 #ifndef subsystem_to_name_map_mach_exc
 #define subsystem_to_name_map_mach_exc \
@@ -308,6 +308,6 @@ union __ReplyUnion__mach_exc_subsystem {
 
 #ifdef __AfterMigUserHeader
 __AfterMigUserHeader
-#endif /* __AfterMigUserHeader */
+#endif 
 
-#endif	 /* _mach_exc_user_ */
+#endif	 

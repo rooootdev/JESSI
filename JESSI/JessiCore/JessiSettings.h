@@ -9,7 +9,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 @property (nonatomic) BOOL flagNettyNoNative;
 @property (nonatomic) BOOL flagJnaNoSys;
-@property (nonatomic) BOOL iOS26JITSupport;
 
 + (instancetype)shared;
 + (NSArray<NSString *> *)availableJavaVersions;

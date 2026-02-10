@@ -9,12 +9,28 @@ struct SheetItem: Identifiable {
 }
 
 @objc public class JessiSwiftUIEntry: NSObject {
+    private static var didConfigureListAppearance = false
+
+    private static func configureListAppearance() {
+        guard !didConfigureListAppearance else { return }
+        didConfigureListAppearance = true
+
+        let insets = UIEdgeInsets(top: 0, left: 16, bottom: 0, right: 16)
+        UITableView.appearance().separatorInset = insets
+        UITableView.appearance().layoutMargins = insets
+        UITableView.appearance().separatorInsetReference = .fromCellEdges
+        UITableViewCell.appearance().separatorInset = insets
+        UITableViewCell.appearance().layoutMargins = insets
+    }
+
     @objc public static func makeRootTabViewController() -> UIViewController {
+        configureListAppearance()
         let hosting = UIHostingController(rootView: RootTabView())
         return hosting
     }
 
     @objc public static func makeServerManagerViewController() -> UIViewController {
+        configureListAppearance()
         let view = ServerManagerView()
         let hosting = UIHostingController(rootView: view)
         hosting.title = "Server Manager"
@@ -22,6 +38,7 @@ struct SheetItem: Identifiable {
     }
 
     @objc public static func makeLaunchViewController() -> UIViewController {
+        configureListAppearance()
         let view = LaunchView()
         let hosting = UIHostingController(rootView: view)
         hosting.title = "Launch"
@@ -29,6 +46,7 @@ struct SheetItem: Identifiable {
     }
 
     @objc public static func makeSettingsViewController() -> UIViewController {
+        configureListAppearance()
         let view = SettingsView()
         let hosting = UIHostingController(rootView: view)
         hosting.title = "Settings"
@@ -36,6 +54,7 @@ struct SheetItem: Identifiable {
     }
 
     @objc public static func makeCreateServerViewController() -> UIViewController {
+        configureListAppearance()
         let view = CreateServerView()
         let hosting = UIHostingController(rootView: view)
         hosting.title = "Server Setup"
@@ -243,7 +262,7 @@ struct ServerManagerView: View {
             .foregroundColor(.white)
             .background(Color.green)
             .cornerRadius(14)
-            .shadow(color: Color.black.opacity(1.0), radius: 8, x: 0, y: 6)
+            .shadow(color: Color.black.opacity(0.5), radius: 8, x: 0, y: 4)
             .padding(.horizontal, 16)
             .padding(.bottom, createButtonBottomPadding)
         }

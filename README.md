@@ -20,22 +20,24 @@ JESSI also works inside of [LiveContainer](https://github.com/LiveContainer/Live
 
 This project is in very active development, heres a list of some current features:
 
-- ability to run minecraft servers (duh)
-- java version selector, as well as custom launch arguments
-- memory allocation slider
-- easy to use server setup
-- a file manager that allows you to manage multiple servers
-- easy server console interaction (via RCON)
+- Ability to run minecraft servers (duh)
+- Java version selector, as well as custom launch arguments
+- Memory allocation slider
+- Easy to use server setup
+- A file manager that allows you to manage multiple servers
+- Easy server console interaction (via RCON)
 - Downloading only the JVM's you want
+- Network tunneling via playit.gg and UPnP support
+- Integrated mod downloading via Modrinth (curseforge etas0n)
 
 In the future, I plan to add the following:
 
-- better jailbroken/trollstore device support (allow the JVM to run in a seperate process)
-- easy port forwarding (via UPNP and/or something like playit.gg)
-- improved launch UI
-- a GUI to configure all server and mod configs
-- more system info in settings
-- and probably much more but this is all I could think of for now
+- Better jailbroken/trollstore device support (allow the JVM to run in a seperate process)
+- Improved launch UI
+- A GUI to configure all server and mod configs
+- More system info in settings
+- Modpack support
+- And probably much more but this is all I could think of for now
 
 # Building/Miscellaneous extra info
 

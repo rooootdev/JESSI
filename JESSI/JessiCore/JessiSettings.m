@@ -5,7 +5,6 @@ static NSString *const kJessiMaxHeapMB = @"jessi.maxHeapMB";
 static NSString *const kJessiFlagNettyNoNative = @"jessi.jvm.flagNettyNoNative";
 static NSString *const kJessiFlagJnaNoSys = @"jessi.jvm.flagJnaNoSys";
 static NSString *const kJessiLaunchArgs = @"jessi.jvm.launchArgs";
-static NSString *const kJessiIOS26JIT = @"jessi.jit.ios26";
 
 @implementation JessiSettings
 
@@ -51,7 +50,6 @@ static NSString *const kJessiIOS26JIT = @"jessi.jit.ios26";
         }
     }
 
-    // If a single generic "java" folder exists, infer which version it is.
     if (!isIOS26OrLater && ![available containsObject:@"8"] && ![available containsObject:@"17"] && ![available containsObject:@"21"]) {
         NSString *genericPath = nil;
         for (NSString *root in roots) {
@@ -76,7 +74,6 @@ static NSString *const kJessiIOS26JIT = @"jessi.jit.ios26";
         }
     }
 
-    // Also include downloaded runtimes stored in Application Support.
     NSURL *appSupport = [[fm URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask] firstObject];
     NSString *runtimesRoot = [[appSupport URLByAppendingPathComponent:@"Runtimes" isDirectory:YES] path];
     if (runtimesRoot.length) {
@@ -116,7 +113,6 @@ static NSString *const kJessiIOS26JIT = @"jessi.jit.ios26";
             self.javaVersion = pickBestAvailable() ?: @"21";
         }
     } else {
-        // No bundled runtimes detected. Keep the saved value if present, otherwise default to 21.
         self.javaVersion = savedVersion.length ? savedVersion : @"21";
     }
     
@@ -135,12 +131,6 @@ static NSString *const kJessiIOS26JIT = @"jessi.jit.ios26";
         self.flagJnaNoSys = [d boolForKey:kJessiFlagJnaNoSys];
     }
 
-    if ([d objectForKey:kJessiIOS26JIT] == nil) {
-        self.iOS26JITSupport = NO;
-    } else {
-        self.iOS26JITSupport = [d boolForKey:kJessiIOS26JIT];
-    }
-
     NSString *args = [d stringForKey:kJessiLaunchArgs];
     if (args) self.launchArguments = args; else self.launchArguments = @"";
 }
@@ -152,7 +142,6 @@ static NSString *const kJessiIOS26JIT = @"jessi.jit.ios26";
 
     [d setBool:self.flagNettyNoNative forKey:kJessiFlagNettyNoNative];
     [d setBool:self.flagJnaNoSys forKey:kJessiFlagJnaNoSys];
-    [d setBool:self.iOS26JITSupport forKey:kJessiIOS26JIT];
     [d setObject:self.launchArguments ?: @"" forKey:kJessiLaunchArgs];
 }
 

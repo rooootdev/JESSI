@@ -794,6 +794,26 @@ int jessi_server_main(int argc, char *argv[]) {
             NSString *stdioLog = [workingDir stringByAppendingPathComponent:@"jessi-stdio.log"]; 
             redirect_stdio_to(stdioLog);
 
+            BOOL isPaperServer = NO;
+            @try {
+                NSString *cfgPath = [workingDir stringByAppendingPathComponent:@"jessiserverconfig.json"]; 
+                NSData *cfgData = [NSData dataWithContentsOfFile:cfgPath options:0 error:nil];
+                if (cfgData.length) {
+                    id obj = [NSJSONSerialization JSONObjectWithData:cfgData options:0 error:nil];
+                    if ([obj isKindOfClass:[NSDictionary class]]) {
+                        id software = ((NSDictionary *)obj)[@"software"];
+                        if ([software isKindOfClass:[NSString class]]) {
+                            NSString *sw = [(NSString *)software lowercaseString];
+                            if ([sw isEqualToString:@"paper"]) {
+                                isPaperServer = YES;
+                            }
+                        }
+                    }
+                }
+            } @catch (__unused NSException *e) {
+                isPaperServer = NO;
+            }
+
             NSString *tmpDir = tmpDirPath();
             [[NSFileManager defaultManager] createDirectoryAtPath:tmpDir withIntermediateDirectories:YES attributes:nil error:nil];
             setenv("HOME", workingDirC, 1);
@@ -917,6 +937,7 @@ int jessi_server_main(int argc, char *argv[]) {
             }
 
             BOOL userSetCodeCache = jessi_args_contain_prefix(extra, @"-XX:ReservedCodeCacheSize=");
+            BOOL userSetPaperIgnoreJavaVersion = jessi_args_contain_prefix(extra, @"-DPaper.IgnoreJavaVersion");
             
             if (!ios26OrLater && iosMajor <= 18) {
                 if (!userSetCodeCache) {
@@ -930,6 +951,10 @@ int jessi_server_main(int argc, char *argv[]) {
             if (flagJnaNoSys) {
                 jargv[idx++] = "-Djna.nosys=true";
                 jargv[idx++] = "-Djna.nounpack=true";
+            }
+
+            if (isPaperServer && !userSetPaperIgnoreJavaVersion) {
+                jargv[idx++] = "-DPaper.IgnoreJavaVersion=true";
             }
             jargv[idx++] = "-XX:MaxGCPauseMillis=50";
             jargv[idx++] = userDirArg.UTF8String;

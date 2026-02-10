@@ -58,7 +58,6 @@ final class SettingsModel: ObservableObject {
     @Published var totalRAM: String = ""
     @Published var freeRAM: String = ""
     @Published var launchArgs: String = ""
-    @Published var iOS26JIT: Bool = false
     @Published var isIOS26: Bool = false
     @Published var iOSVersionString: String = ""
 
@@ -75,10 +74,15 @@ final class SettingsModel: ObservableObject {
         let s = JessiSettings.shared()
 
         let os = ProcessInfo.processInfo.operatingSystemVersion
-        iOSVersionString = "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion)"
-
+        
         let totalMB = Int(ProcessInfo.processInfo.physicalMemory / (1024 * 1024))
         heapMaxMB = max(128, totalMB)
+        
+        if os.patchVersion>0 {
+            iOSVersionString = "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion)"
+        } else {
+            iOSVersionString = "\(os.majorVersion).\(os.minorVersion)"
+        }
 
         availableJavaVersions = JessiSettings.availableJavaVersions()
         javaVersion = s.javaVersion
@@ -93,9 +97,8 @@ final class SettingsModel: ObservableObject {
         flagJnaNoSys = s.flagJnaNoSys
         isJITEnabled = isJITEnabledCheck()
         totalRAM = formatRAM(ProcessInfo.processInfo.physicalMemory)
-        freeRAM = formatRAM(getFreeMemory())
+        refreshSystemStats()
         launchArgs = s.launchArguments
-        iOS26JIT = s.iOS26JITSupport
         isIOS26 = jessi_is_ios26_or_later()
 
         refreshInstalledJVMVersions()
@@ -132,11 +135,9 @@ final class SettingsModel: ObservableObject {
         s.flagJnaNoSys = flagJnaNoSys
         s.save()
     }
-    
-    func applyAndSaveIOS26JIT() {
-        let s = JessiSettings.shared()
-        s.iOS26JITSupport = iOS26JIT
-        s.save()
+
+    func refreshSystemStats() {
+        freeRAM = formatRAM(getAvailableMemoryEstimate())
     }
 
     func applyHeapFromText() {
@@ -163,21 +164,62 @@ final class SettingsModel: ObservableObject {
         return String(format: "%.0f MB", mb)
     }
 
-    private func getFreeMemory() -> UInt64 {
-        var vmStats = vm_statistics64()
-        var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.size / MemoryLayout<integer_t>.size)
-        let hostPort = mach_host_self()
-        let result = withUnsafeMutablePointer(to: &vmStats) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                host_statistics64(hostPort, HOST_VM_INFO64, $0, &count)
+    private struct SystemMemoryEstimate {
+        let pageSize: UInt64
+        let strictFreeBytes: UInt64
+        let availableBytes: UInt64
+        let wiredBytes: UInt64
+        let compressedBytes: UInt64
+    }
+
+    private func estimateSystemMemory() -> SystemMemoryEstimate? {
+        var pageSize: vm_size_t = 0
+        guard host_page_size(mach_host_self(), &pageSize) == KERN_SUCCESS else { return nil }
+        let p = UInt64(pageSize)
+
+        var stats = vm_statistics64()
+        var count = mach_msg_type_number_t(MemoryLayout.size(ofValue: stats) / MemoryLayout<integer_t>.size)
+
+        let kerr: kern_return_t = withUnsafeMutablePointer(to: &stats) { statsPtr in
+            statsPtr.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { intPtr in
+                host_statistics64(mach_host_self(), HOST_VM_INFO64, intPtr, &count)
             }
         }
-        if result == KERN_SUCCESS {
-            let pageSize = UInt64(vm_kernel_page_size)
-            let freePages = UInt64(vmStats.free_count + vmStats.inactive_count)
-            return freePages * pageSize
+        guard kerr == KERN_SUCCESS else { return nil }
+
+        let freePages = UInt64(stats.free_count)
+        let speculativePages = UInt64(stats.speculative_count)
+        let inactivePages = UInt64(stats.inactive_count)
+        let purgeablePages = UInt64(stats.purgeable_count)
+        let wiredPages = UInt64(stats.wire_count)
+        let compressedPages = UInt64(stats.compressor_page_count)
+
+        let strictFree = (freePages + speculativePages) * p
+        let available = (freePages + speculativePages + inactivePages + purgeablePages) * p
+
+        return SystemMemoryEstimate(
+            pageSize: p,
+            strictFreeBytes: strictFree,
+            availableBytes: available,
+            wiredBytes: wiredPages * p,
+            compressedBytes: compressedPages * p
+        )
+    }
+
+    private func getAvailableMemoryEstimate() -> UInt64 {
+        estimateSystemMemory()?.availableBytes ?? 0
+    }
+
+    private func getAppMemoryFootprint() -> UInt64 {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout.size(ofValue: info) / MemoryLayout<integer_t>.size)
+        let kr = withUnsafeMutablePointer(to: &info) { infoPtr in
+            infoPtr.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { intPtr in
+                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), intPtr, &count)
+            }
         }
-        return 0
+        guard kr == KERN_SUCCESS else { return 0 }
+        return UInt64(info.phys_footprint)
     }
     
     func refreshAvailableJavaVersions() {
@@ -657,13 +699,6 @@ struct SettingsView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text("\(model.heapMB) MB")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.secondary)
-                        Spacer()
-                    }
-
                     Slider(
                         value: Binding(
                             get: { Double(model.heapMB) },
@@ -674,15 +709,8 @@ struct SettingsView: View {
                     )
                 }
             }            
-            
-            if model.isIOS26 {
-                Section(header: Text("Trusted Execution Monitor"), footer: Text("Enable for A15/M2 on iOS 26.")) {
-                    Toggle("TXM Support", isOn: $model.iOS26JIT)
-                        .onChange(of: model.iOS26JIT) { _ in
-                            model.applyAndSaveIOS26JIT()
-                        }
-                }
-            }
+
+            ConnectionSectionView()
 
             Section(header: Text("System")) {
                 HStack {
@@ -703,7 +731,7 @@ struct SettingsView: View {
                     Text(model.totalRAM)
                 }
                 HStack {
-                    Text("Free RAM (estimated)")
+                    Text("Available RAM (estimated)")
                     Spacer()
                     Text(model.freeRAM)
                 }
@@ -725,7 +753,8 @@ struct SettingsView: View {
             model.javaVersion = s.javaVersion
             model.heapMB = s.maxHeapMB
             model.heapText = String(s.maxHeapMB)
-            model.iOS26JIT = s.iOS26JITSupport
+
+            model.refreshSystemStats()
 
             model.refreshAvailableJavaVersions()
             model.refreshInstalledJVMVersions()

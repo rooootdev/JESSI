@@ -179,7 +179,6 @@ static BOOL g_serverRunning = NO;
     }
     self.logOffset = 0;
 
-    // Used as a fallback while modded servers bootstrap before latest.log exists.
     self.stdioOffset = 0;
 
     NSString *logPath = [[dir stringByAppendingPathComponent:@"logs"] stringByAppendingPathComponent:@"latest.log"]; 
@@ -195,8 +194,6 @@ static BOOL g_serverRunning = NO;
 
         NSFileManager *fm = [NSFileManager defaultManager];
 
-        // Prefer the Minecraft log file once it exists; otherwise, show stdio output.
-        // Fabric/Forge bootstraps often print to stdout/stderr before latest.log is created.
         BOOL hasLatest = [fm fileExistsAtPath:logPath];
         NSString *pathToTail = hasLatest ? logPath : stdioPath;
         off_t *offsetPtr = hasLatest ? &strongSelf->_logOffset : &strongSelf->_stdioOffset;
