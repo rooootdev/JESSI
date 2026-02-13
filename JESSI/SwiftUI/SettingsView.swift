@@ -54,6 +54,7 @@ final class SettingsModel: ObservableObject {
     @Published var heapMB: Int = 768
     @Published var flagNettyNoNative: Bool = true
     @Published var flagJnaNoSys: Bool = false
+    @Published var txmSupport: Bool = true
     @Published var isJITEnabled: Bool = false
     @Published var totalRAM: String = ""
     @Published var freeRAM: String = ""
@@ -100,6 +101,7 @@ final class SettingsModel: ObservableObject {
         refreshSystemStats()
         launchArgs = s.launchArguments
         isIOS26 = jessi_is_ios26_or_later()
+        txmSupport = s.txmSupport
 
         refreshInstalledJVMVersions()
     }
@@ -113,6 +115,12 @@ final class SettingsModel: ObservableObject {
     func applyAndSaveLaunchArgs() {
         let s = JessiSettings.shared()
         s.launchArguments = launchArgs
+        s.save()
+    }
+
+    func applyAndSaveTxmSupport() {
+        let s = JessiSettings.shared()
+        s.txmSupport = txmSupport
         s.save()
     }
 
@@ -299,6 +307,46 @@ final class SettingsModel: ObservableObject {
         if fm.fileExists(atPath: helper2.path) { _ = chmod(helper2.path, 0o755) }
     }
 
+    private func readFileMagic(_ url: URL) throws -> UInt32 {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        let data = try handle.read(upToCount: 4) ?? Data()
+        if data.count < 4 {
+            return 0
+        }
+        return data.withUnsafeBytes { raw in
+            raw.load(as: UInt32.self)
+        }
+    }
+
+    private func isMachOMagic(_ magicLE: UInt32) -> Bool {
+        // Little-endian constants for common Mach-O magics.
+        // 0xfeedfacf -> 64-bit Mach-O
+        // 0xcafebabe -> FAT (universal) Mach-O
+        // Note: when reading little-endian UInt32 directly from bytes, these appear as below.
+        return magicLE == 0xFEEDFACF || magicLE == 0xCAFEBABE || magicLE == 0xBEBAFECA
+    }
+
+    private func validateInstalledRuntime(at runtimeRoot: URL, version: String) throws {
+        let fm = FileManager.default
+        let releaseFile = runtimeRoot.appendingPathComponent("release", isDirectory: false)
+        guard fm.fileExists(atPath: releaseFile.path) else {
+            throw NSError(domain: "JESSI", code: 40, userInfo: [NSLocalizedDescriptionKey: "JRE\(version) install looks incomplete (missing release file). Try reinstalling."])
+        }
+
+        let candidate1 = runtimeRoot.appendingPathComponent("lib/jli/libjli.dylib", isDirectory: false)
+        let candidate2 = runtimeRoot.appendingPathComponent("lib/libjli.dylib", isDirectory: false)
+        let libjli = fm.fileExists(atPath: candidate1.path) ? candidate1 : candidate2
+        guard fm.fileExists(atPath: libjli.path) else {
+            throw NSError(domain: "JESSI", code: 41, userInfo: [NSLocalizedDescriptionKey: "JRE\(version) install looks incomplete (missing libjli.dylib). Try reinstalling."])
+        }
+
+        let magic = try readFileMagic(libjli)
+        guard isMachOMagic(magic) else {
+            throw NSError(domain: "JESSI", code: 42, userInfo: [NSLocalizedDescriptionKey: String(format: "JRE%@ install appears corrupted (libjli magic=0x%08x). Delete and reinstall the JVM.", version, magic)])
+        }
+    }
+
     private func extractTar(_ tarPath: URL, to destDir: URL) throws {
         let fm = FileManager.default
         try fm.createDirectory(at: destDir, withIntermediateDirectories: true)
@@ -449,6 +497,13 @@ final class SettingsModel: ObservableObject {
                     try? fm.removeItem(at: backup)
                 }
                 try fm.moveItem(at: staging, to: finalDir)
+
+                do {
+                    try self.validateInstalledRuntime(at: finalDir, version: version)
+                } catch {
+                    try? fm.removeItem(at: finalDir)
+                    throw error
+                }
 
                 completion(.success(()))
             } catch {
@@ -719,6 +774,12 @@ struct SettingsView: View {
                     Text(model.isJITEnabled ? "Yes" : "No")
                         .foregroundColor(model.isJITEnabled ? .green : .red)
                 }
+
+                if model.isIOS26 {
+                    Toggle("TXM Support (A15+/M2+)", isOn: $model.txmSupport)
+                        .onChange(of: model.txmSupport) { _ in model.applyAndSaveTxmSupport() }
+                }
+
                 HStack {
                     Text("iOS Version")
                     Spacer()
@@ -753,6 +814,8 @@ struct SettingsView: View {
             model.javaVersion = s.javaVersion
             model.heapMB = s.maxHeapMB
             model.heapText = String(s.maxHeapMB)
+
+            model.txmSupport = s.txmSupport
 
             model.refreshSystemStats()
 

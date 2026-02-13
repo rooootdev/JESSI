@@ -20,7 +20,7 @@ JESSI also works inside of [LiveContainer](https://github.com/LiveContainer/Live
 
 # Features
 
-This project is in very active development, heres a list of some current features:
+This project is in active development, heres a list of some current features:
 
 - Ability to run minecraft servers (duh)
 - Java version selector, as well as custom launch arguments
@@ -37,7 +37,6 @@ In the future, I plan to add the following:
 - Better jailbroken/trollstore device support (allow the JVM to run in a seperate process)
 - Improved launch UI
 - A GUI to configure all server and mod configs
-- More system info in settings
 - Modpack support
 - And probably much more but this is all I could think of for now
 

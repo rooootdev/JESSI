@@ -5,6 +5,7 @@ static NSString *const kJessiMaxHeapMB = @"jessi.maxHeapMB";
 static NSString *const kJessiFlagNettyNoNative = @"jessi.jvm.flagNettyNoNative";
 static NSString *const kJessiFlagJnaNoSys = @"jessi.jvm.flagJnaNoSys";
 static NSString *const kJessiLaunchArgs = @"jessi.jvm.launchArgs";
+static NSString *const kJessiTXMSupport = @"jessi.txmSupport";
 
 @implementation JessiSettings
 
@@ -119,6 +120,12 @@ static NSString *const kJessiLaunchArgs = @"jessi.jvm.launchArgs";
     NSInteger mb = [d integerForKey:kJessiMaxHeapMB];
     self.maxHeapMB = (mb > 0) ? mb : 768;
 
+    if ([d objectForKey:kJessiTXMSupport] == nil) {
+        self.txmSupport = YES;
+    } else {
+        self.txmSupport = [d boolForKey:kJessiTXMSupport];
+    }
+
     if ([d objectForKey:kJessiFlagNettyNoNative] == nil) {
         self.flagNettyNoNative = YES;
     } else {
@@ -143,6 +150,7 @@ static NSString *const kJessiLaunchArgs = @"jessi.jvm.launchArgs";
     [d setBool:self.flagNettyNoNative forKey:kJessiFlagNettyNoNative];
     [d setBool:self.flagJnaNoSys forKey:kJessiFlagJnaNoSys];
     [d setObject:self.launchArguments ?: @"" forKey:kJessiLaunchArgs];
+    [d setBool:self.txmSupport forKey:kJessiTXMSupport];
 }
 
 @end
