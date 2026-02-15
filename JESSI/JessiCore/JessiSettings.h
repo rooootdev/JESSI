@@ -7,6 +7,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy) NSString *javaVersion;
 @property (nonatomic) NSInteger maxHeapMB;
 
+@property (nonatomic) BOOL txmSupport;
+
 @property (nonatomic) BOOL flagNettyNoNative;
 @property (nonatomic) BOOL flagJnaNoSys;
 
