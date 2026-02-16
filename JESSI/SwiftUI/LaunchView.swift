@@ -593,7 +593,6 @@ struct LaunchView: View {
                 }
             }
         }
-// .background(Color(UIColor.systemBackground)) // Removed so nav bar blur works
         .navigationTitle("Launch")
         .navigationBarTitleDisplayMode(.inline)
         .alert(item: $model.activeAlert) { alert in
@@ -605,15 +604,27 @@ struct LaunchView: View {
                     dismissButton: .default(Text("OK"))
                 )
             case .stopConfirm:
-                return Alert(
-                    title: Text("Stop server?"),
-                    message: Text("Stopping will close JESSI after the server fully stops."),
-                    primaryButton: .destructive(Text("Stop & Close")) {
-                        exitAfterStopRequested = true
-                        model.stop()
-                    },
-                    secondaryButton: .cancel(Text("Cancel"))
-                )
+                if jessi_is_trollstore_installed() {
+                    return Alert(
+                        title: Text("Stop server?"),
+                        message: Text("Stopping will terminate the server process."),
+                        primaryButton: .destructive(Text("Stop")) {
+                            exitAfterStopRequested = true
+                            model.stop()
+                        },
+                        secondaryButton: .cancel(Text("Cancel"))
+                    )
+                } else {
+                    return Alert(
+                        title: Text("Stop server?"),
+                        message: Text("Stopping will close JESSI after the server fully stops."),
+                        primaryButton: .destructive(Text("Stop & Close")) {
+                            exitAfterStopRequested = true
+                            model.stop()
+                        },
+                        secondaryButton: .cancel(Text("Cancel"))
+                    )
+                }
             case .jitNotEnabled:
                 return Alert(
                     title: Text("JIT Not Enabled"),
@@ -639,9 +650,12 @@ struct LaunchView: View {
         .onChange(of: model.isRunning) { isRunning in
             guard !isRunning, exitAfterStopRequested else { return }
             exitAfterStopRequested = false
-            UIApplication.shared.perform(#selector(NSXPCConnection.suspend))
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                exit(0)
+            
+            if !jessi_is_trollstore_installed() {
+                UIApplication.shared.perform(#selector(NSXPCConnection.suspend))
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    exit(0)
+                }
             }
         }
         .onAppear {

@@ -10,6 +10,7 @@ extern "C" {
 bool jessi_check_jit_enabled(void);
 bool jessi_is_ios26_or_later(void);
 bool jessi_is_txm_device(void);
+bool jessi_is_trollstore_installed(void);
 
 #ifdef __cplusplus
 }

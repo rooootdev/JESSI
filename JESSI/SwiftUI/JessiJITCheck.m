@@ -18,6 +18,7 @@ int csops(pid_t pid, int ops, void *useraddr, size_t nbytes);
 #endif
 
 #import <dlfcn.h>
+#import "JessiTrollStoreDetection.h"
 
 #if __has_include(<Security/SecTask.h>)
 #import <Security/SecTask.h>
@@ -83,4 +84,8 @@ BOOL jessi_is_txm_device(void) {
     closedir(d);
 
     return txmPath[0] != '\0' && access(txmPath, F_OK) == 0;
+}
+
+BOOL jessi_is_trollstore_installed(void) {
+    return jessi_trollstore_marker_exists();
 }

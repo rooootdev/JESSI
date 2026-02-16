@@ -10,6 +10,13 @@ PAYLOAD_DIR="$DIST_DIR/Payload"
 IPA_PATH="$DIST_DIR/${APP_NAME}.ipa"
 DERIVED_DATA_DIR="$PROJECT_DIR/build/DerivedData"
 
+# Optional: ldid-sign the app binary with TrollStore entitlements before packaging.
+# Usage:
+#   JESSI_LDID_SIGN=1 ./scripts/build-ipa.sh
+#   JESSI_LDID_ENTITLEMENTS=Config/JESSI.trollstore.entitlements JESSI_LDID_SIGN=1 ./scripts/build-ipa.sh
+JESSI_LDID_SIGN="${JESSI_LDID_SIGN:-0}"
+JESSI_LDID_ENTITLEMENTS="${JESSI_LDID_ENTITLEMENTS:-$PROJECT_DIR/Config/JESSI.trollstore.entitlements}"
+
 # build ipa
 cd "$PROJECT_DIR"
 
@@ -60,6 +67,19 @@ fi
 
 # remove mobileprovision
 rm -rf "$DEST_APP/_CodeSignature" "$DEST_APP/embedded.mobileprovision" || true
+
+if [[ "$JESSI_LDID_SIGN" == "1" ]]; then
+  if ! command -v ldid >/dev/null 2>&1; then
+    echo "ERROR: JESSI_LDID_SIGN=1 but 'ldid' is not installed. Try: brew install ldid" >&2
+    exit 1
+  fi
+  if [[ ! -f "$JESSI_LDID_ENTITLEMENTS" ]]; then
+    echo "ERROR: Entitlements file not found: $JESSI_LDID_ENTITLEMENTS" >&2
+    exit 1
+  fi
+  echo "Signing $APP_NAME with ldid entitlements: $JESSI_LDID_ENTITLEMENTS"
+  ldid -S"$JESSI_LDID_ENTITLEMENTS" "$DEST_APP/$APP_NAME"
+fi
 
 mkdir -p "$DIST_DIR"
 rm -f "$IPA_PATH"

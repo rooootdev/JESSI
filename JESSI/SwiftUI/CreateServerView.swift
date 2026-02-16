@@ -988,7 +988,7 @@ struct CreateServerView: View {
     }
 
     private func createServer() {
-        if software == .forge || software == .neoforge {
+        if (software == .forge || software == .neoforge) && !jessi_is_trollstore_installed() {
             pendingCreateServer = true
             showForgeWarning = true
             return
