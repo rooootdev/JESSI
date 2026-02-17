@@ -1,6 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
+import Darwin
 
 struct FileBrowserView: View {
     let directory: String
@@ -20,6 +21,8 @@ struct FileBrowserView: View {
     @State private var showingRenameSheet: Bool = false
 
     @State private var shareItem: ShareItem? = nil
+    @State private var directoryMonitor: DispatchSourceFileSystemObject? = nil
+    @State private var pendingReloadWorkItem: DispatchWorkItem? = nil
     
     private enum BrowserAlert: Identifiable {
         case confirmDelete(FileItem)
@@ -206,7 +209,13 @@ struct FileBrowserView: View {
                 dismissButton: .default(Text("OK"))
             )
         }
-        .onAppear { reload() }
+        .onAppear {
+            reload()
+            startDirectoryMonitor()
+        }
+        .onDisappear {
+            stopDirectoryMonitor()
+        }
     }
     
     private var createButtonBottomPadding: CGFloat {
@@ -261,6 +270,50 @@ struct FileBrowserView: View {
             }
         }
         self.files = items
+    }
+
+    private func startDirectoryMonitor() {
+        stopDirectoryMonitor()
+
+        let fd = open(directory, O_EVTONLY)
+        guard fd >= 0 else { return }
+
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd,
+            eventMask: [.write, .delete, .rename],
+            queue: DispatchQueue.global(qos: .utility)
+        )
+
+        source.setEventHandler { [directory] in
+            DispatchQueue.main.async {
+                // Ensure we still react for the same directory instance.
+                guard !directory.isEmpty else { return }
+                self.scheduleReloadFromMonitor()
+            }
+        }
+
+        source.setCancelHandler {
+            close(fd)
+        }
+
+        directoryMonitor = source
+        source.resume()
+    }
+
+    private func stopDirectoryMonitor() {
+        pendingReloadWorkItem?.cancel()
+        pendingReloadWorkItem = nil
+        directoryMonitor?.cancel()
+        directoryMonitor = nil
+    }
+
+    private func scheduleReloadFromMonitor() {
+        pendingReloadWorkItem?.cancel()
+        let item = DispatchWorkItem {
+            reload()
+        }
+        pendingReloadWorkItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: item)
     }
 
     private func deleteItem(_ item: FileItem) {
