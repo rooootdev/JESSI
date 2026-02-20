@@ -1,0 +1,109 @@
+name: build ipa
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+
+    env:
+      SCHEME: JESSI
+      CONFIGURATION: Release
+      APP_NAME: JESSI
+
+    steps:
+      - name: checkout repo
+        uses: actions/checkout@v4
+
+      - name: select xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: install ldid
+        run: |
+          brew update
+          brew install ldid || true
+
+      - name: build ipa
+        run: |
+          set -euo pipefail
+
+          PROJECT_DIR="$GITHUB_WORKSPACE"
+          DIST_DIR="$PROJECT_DIR/dist"
+          PAYLOAD_DIR="$DIST_DIR/Payload"
+          IPA_PATH="$DIST_DIR/${APP_NAME}.ipa"
+          DERIVED_DATA_DIR="$PROJECT_DIR/build/DerivedData"
+
+          JESSI_LDID_SIGN="${JESSI_LDID_SIGN:-0}"
+          JESSI_LDID_ENTITLEMENTS="${JESSI_LDID_ENTITLEMENTS:-$PROJECT_DIR/Config/JESSI.trollstore.entitlements}"
+
+          echo "does this work?"
+          echo " - roooot      "
+
+          cd "$PROJECT_DIR"
+
+          rm -rf "$DERIVED_DATA_DIR"
+          mkdir -p build
+
+          echo "building with xcodebuild..."
+
+          set +e
+          xcodebuild \
+            -project "$PROJECT_DIR/JESSI.xcodeproj" \
+            -scheme "$SCHEME" \
+            -configuration "$CONFIGURATION" \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$DERIVED_DATA_DIR" \
+            build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_STYLE=Manual \
+            2>&1 | tee build/xcodebuild.log
+          STATUS=${PIPESTATUS[0]}
+          set -e
+
+          if [[ $STATUS -ne 0 ]]; then
+            echo "build failed"
+            tail -n 200 build/xcodebuild.log
+            exit $STATUS
+          fi
+
+          APP_DIR="$DERIVED_DATA_DIR/Build/Products/${CONFIGURATION}-iphoneos/${APP_NAME}.app"
+
+          if [[ ! -d "$APP_DIR" ]]; then
+            echo "app not found at $APP_DIR"
+            exit 1
+          fi
+
+          mkdir -p "$PAYLOAD_DIR"
+          rm -rf "$PAYLOAD_DIR"/*
+
+          DEST_APP="$PAYLOAD_DIR/${APP_NAME}.app"
+          rsync -aL --delete "$APP_DIR/" "$DEST_APP/"
+
+          rm -rf \
+            "$DEST_APP/_CodeSignature" \
+            "$DEST_APP/embedded.mobileprovision" || true
+
+          if [[ "$JESSI_LDID_SIGN" == "1" ]]; then
+            echo "signing with ldid"
+            ldid -S"$JESSI_LDID_ENTITLEMENTS" "$DEST_APP/$APP_NAME"
+          fi
+
+          mkdir -p "$DIST_DIR"
+          rm -f "$IPA_PATH"
+
+          cd "$DIST_DIR"
+          /usr/bin/zip -qr "$IPA_PATH" Payload
+
+          echo "created ipa: "
+          ls -lah "$IPA_PATH"
+
+      - name: upload ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: JESSI
+          path: dist/*.ipa
