@@ -2,15 +2,12 @@
 
 #import "JessiPaths.h"
 #import "JessiSettings.h"
-#import "../SwiftUI/JessiJITCheck.h"
 
 #import <UIKit/UIKit.h>
 #import <sys/socket.h>
 #import <netinet/in.h>
 #import <sys/time.h>
 #import <unistd.h>
-#import <spawn.h>
-#import <crt_externs.h>
 
 extern int jessi_server_main(int argc, char *argv[]);
 
@@ -418,30 +415,11 @@ static BOOL jessi_read_all(int fd, void *buf, size_t len) {
         char *argvv[] = { argv0, argv1, argv2, argv3, NULL };
 
         int code = 0;
-        
-        if (jessi_is_trollstore_installed()) {
-            NSString *mainBin = [[NSBundle mainBundle] executablePath];
-            pid_t pid;
-            int status = posix_spawn(&pid, mainBin.fileSystemRepresentation, NULL, NULL, argvv, *_NSGetEnviron());
-            if (status == 0) {
-                int waitStatus;
-                waitpid(pid, &waitStatus, 0);
-                if (WIFEXITED(waitStatus)) {
-                    code = WEXITSTATUS(waitStatus);
-                } else {
-                    code = 128 + WTERMSIG(waitStatus);
-                }
-            } else {
-                code = status;
-                [self emitConsole:[NSString stringWithFormat:@"\nFailed to spawn child process: %s\n", strerror(status)]];
-            }
-        } else {
-            @try {
-                code = jessi_server_main(4, argvv);
-            } @catch (NSException *e) {
-                code = 251;
-                [self emitConsole:[NSString stringWithFormat:@"\nJVM threw exception: %@\n%@\n", e.reason ?: @"(no reason)", e.callStackSymbols ?: @[]]];
-            }
+        @try {
+            code = jessi_server_main(4, argvv);
+        } @catch (NSException *e) {
+            code = 251;
+            [self emitConsole:[NSString stringWithFormat:@"\nJVM threw exception: %@\n%@\n", e.reason ?: @"(no reason)", e.callStackSymbols ?: @[]]];
         }
 
         free(argv0); free(argv1); free(argv2); free(argv3);

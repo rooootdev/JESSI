@@ -2,8 +2,6 @@ import SwiftUI
 
 struct RootTabView: View {
 	@State private var selectedTab: Int = 1
-	@State private var showTrollStoreDetectedAlert = false
-	@State private var didCheckTrollStoreOnLaunch = false
 
     init() {
         _selectedTab = State(initialValue: 1)
@@ -48,19 +46,7 @@ struct RootTabView: View {
 		}
 		.accentColor(.green)
 		.onAppear {
-			if !didCheckTrollStoreOnLaunch {
-				didCheckTrollStoreOnLaunch = true
-				showTrollStoreDetectedAlert = jessi_is_trollstore_installed()
-			}
-
 			TunnelingModel.autoInstallPlayitIfNeeded()
-		}
-		.alert(isPresented: $showTrollStoreDetectedAlert) {
-			Alert(
-				title: Text("TrollStore Detected"),
-				message: Text("JESSI detected a TrollStore installation on this device. This is a test popup for TrollStore detection."),
-				dismissButton: .default(Text("OK"))
-			)
 		}
 	}
 }

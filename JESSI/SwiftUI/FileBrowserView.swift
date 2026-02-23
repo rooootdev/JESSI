@@ -114,6 +114,12 @@ struct FileBrowserView: View {
                         }
                     }
                 }
+
+                Section {
+                    Color.clear
+                        .frame(height: 15)
+                        .listRowBackground(Color.clear)
+                }
             }
             .listStyle(InsetGroupedListStyle())
             
@@ -286,7 +292,6 @@ struct FileBrowserView: View {
 
         source.setEventHandler { [directory] in
             DispatchQueue.main.async {
-                // Ensure we still react for the same directory instance.
                 guard !directory.isEmpty else { return }
                 self.scheduleReloadFromMonitor()
             }

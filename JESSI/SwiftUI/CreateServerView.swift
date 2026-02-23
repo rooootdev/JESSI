@@ -229,6 +229,12 @@ struct CreateServerView: View {
                     QuickSettingValueRow(title: "MOTD", defaultValue: "A Minecraft Server", text: $motd, keyboardType: .default, fieldWidth: 200)
                     QuickSettingValueRow(title: "World Seed", defaultValue: "Random", text: $seed, keyboardType: .default, fieldWidth: 200)
                 }
+
+                Section {
+                    Color.clear
+                        .frame(height: 15)
+                        .listRowBackground(Color.clear)
+                }
             }
             .listStyle(.insetGrouped)
             .navigationTitle("Server Setup")

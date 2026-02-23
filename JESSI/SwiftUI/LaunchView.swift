@@ -586,10 +586,10 @@ struct LaunchView: View {
                             .frame(maxWidth: .infinity)
                             .padding()
                             .background(Color.green)
-                            .cornerRadius(12)
+                            .cornerRadius(14)
                     }
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 32)
+                    .padding(.bottom, createButtonBottomPadding)
                 }
             }
         }
@@ -604,27 +604,15 @@ struct LaunchView: View {
                     dismissButton: .default(Text("OK"))
                 )
             case .stopConfirm:
-                if jessi_is_trollstore_installed() {
-                    return Alert(
-                        title: Text("Stop server?"),
-                        message: Text("Stopping will terminate the server process."),
-                        primaryButton: .destructive(Text("Stop")) {
-                            exitAfterStopRequested = true
-                            model.stop()
-                        },
-                        secondaryButton: .cancel(Text("Cancel"))
-                    )
-                } else {
-                    return Alert(
-                        title: Text("Stop server?"),
-                        message: Text("Stopping will close JESSI after the server fully stops."),
-                        primaryButton: .destructive(Text("Stop & Close")) {
-                            exitAfterStopRequested = true
-                            model.stop()
-                        },
-                        secondaryButton: .cancel(Text("Cancel"))
-                    )
-                }
+                return Alert(
+                    title: Text("Stop server?"),
+                    message: Text("Stopping will close JESSI after the server fully stops."),
+                    primaryButton: .destructive(Text("Stop & Close")) {
+                        exitAfterStopRequested = true
+                        model.stop()
+                    },
+                    secondaryButton: .cancel(Text("Cancel"))
+                )
             case .jitNotEnabled:
                 return Alert(
                     title: Text("JIT Not Enabled"),
@@ -650,12 +638,9 @@ struct LaunchView: View {
         .onChange(of: model.isRunning) { isRunning in
             guard !isRunning, exitAfterStopRequested else { return }
             exitAfterStopRequested = false
-            
-            if !jessi_is_trollstore_installed() {
-                UIApplication.shared.perform(#selector(NSXPCConnection.suspend))
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    exit(0)
-                }
+            UIApplication.shared.perform(#selector(NSXPCConnection.suspend))
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                exit(0)
             }
         }
         .onAppear {
@@ -671,7 +656,10 @@ struct LaunchView: View {
 
             model.reloadServers()
         }
+    }
 
+    private var createButtonBottomPadding: CGFloat {
+        24
     }
 }
 

@@ -18,7 +18,6 @@ int csops(pid_t pid, int ops, void *useraddr, size_t nbytes);
 #endif
 
 #import <dlfcn.h>
-#import "JessiTrollStoreDetection.h"
 
 #if __has_include(<Security/SecTask.h>)
 #import <Security/SecTask.h>
@@ -87,5 +86,24 @@ BOOL jessi_is_txm_device(void) {
 }
 
 BOOL jessi_is_trollstore_installed(void) {
-    return jessi_trollstore_marker_exists();
+    NSFileManager *fm = [NSFileManager defaultManager];
+
+    NSArray<NSString *> *roots = @[@"/var/containers/Bundle/Application",
+                                   @"/private/var/containers/Bundle/Application",
+                                   @"/var/mobile/Containers/Bundle/Application"];
+
+    for (NSString *root in roots) {
+        BOOL isDir = NO;
+        if (![fm fileExistsAtPath:root isDirectory:&isDir] || !isDir) continue;
+
+        NSDirectoryEnumerator *enumerator = [fm enumeratorAtPath:root];
+        NSString *relativePath;
+        while ((relativePath = [enumerator nextObject])) {
+            if ([relativePath rangeOfString:@"TrollStore.app"].location != NSNotFound) {
+                return YES;
+            }
+        }
+    }
+
+    return NO;
 }

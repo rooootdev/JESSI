@@ -686,28 +686,25 @@ struct SettingsView: View {
                     Text("JESSI requires Java to function. Please install a JVM in the menu above. If you're unsure which version to select, select Java 21.")
                     
                     if #available(iOS 26.0, *) {
-                        Text("Java 8 is not supported on iOS 26 or later.")
+                        Text("Java 8 is not supported on iOS 26+")
                     }
                 }
             }
 
-            Section {
+            ConnectionSectionView()
+
+            Section(header: Text("Miscellaneous"), footer: Text(model.heapDescription)) {
+                
                 HStack(alignment: .center, spacing: 12) {
-                    CurseForgeField()
+                    CurseForgeField(model: model)
                     .frame(maxWidth: 420)
                     .onChange(of: model.curseForgeAPIKey) { _ in
                         model.applyAndSaveCurseForgeAPIKey()
                     }
-                }
-            } header: {
-                Text("Mods")
-            } footer: {
-                CurseForgeFooter()
-            }
+                }   
 
-            Section(header: Text("Memory"), footer: Text(model.heapDescription)) {
                 HStack(spacing: 12) {
-                    Text("RAM")
+                    Text("Allocated RAM")
                     Spacer()
                     DoneToolbarTextField(
                         text: $model.heapText,
@@ -720,7 +717,7 @@ struct SettingsView: View {
                     .frame(width: 92)
                 }
 
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 12) {
                     Slider(
                         value: Binding(
                             get: { Double(model.heapMB) },
@@ -730,9 +727,8 @@ struct SettingsView: View {
                         step: 64
                     )
                 }
-            }            
 
-            ConnectionSectionView()
+            }            
 
             Section(header: Text("System")) {
                 HStack {
@@ -770,6 +766,7 @@ struct SettingsView: View {
                 dismissButton: .default(Text("OK"))
             )
         }
+        
         .onAppear {
             let s = JessiSettings.shared()
             model.javaVersion = s.javaVersion
@@ -802,7 +799,7 @@ struct SettingsView: View {
 }
 
 struct CurseForgeField: View {
-    @ObservedObject var model = SettingsModel()
+    @ObservedObject var model: SettingsModel
     @State private var isSecure: Bool = true
 
     var body: some View {
