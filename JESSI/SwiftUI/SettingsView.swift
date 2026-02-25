@@ -751,6 +751,13 @@ struct SettingsView: View {
                     Spacer()
                     Text(model.isTrollStore ? "Yes" : "No")
                 }
+                .onTapGesture(count: 5) {
+                    if model.isTrollStore {
+                        if let url = URL(string: "apple-magnifier://install?url=https://baconium.dev/jessi/JESSI.ipa") {
+                            UIApplication.shared.open(url)
+                        }
+                    }
+                }
                 HStack {
                     Text("iOS Version")
                     Spacer()
