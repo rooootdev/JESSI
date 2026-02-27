@@ -71,11 +71,18 @@ final class LaunchModel: NSObject, ObservableObject {
     @Published var propertiesManager: ServerPropertiesManager?
 
     private let service: JessiServerService
+    private var cancellables = Set<AnyCancellable>()
 
     override init() {
         self.service = JessiServerService()
         super.init()
         self.service.delegate = self
+        NotificationCenter.default.publisher(for: Notification.Name("JessiServersChanged"))
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.reloadServers()
+            }
+            .store(in: &cancellables)
         reloadServers()
         self.isRunning = service.isRunning
         updatePropertiesManager()
@@ -84,7 +91,9 @@ final class LaunchModel: NSObject, ObservableObject {
     func reloadServers() {
         let folders = service.availableServerFolders()
         self.servers = folders
-        if selectedServer.isEmpty, let first = folders.first {
+        if folders.isEmpty {
+            selectedServer = ""
+        } else if !folders.contains(selectedServer), let first = folders.first {
             selectedServer = first
         }
         updatePropertiesManager()
@@ -580,6 +589,14 @@ struct LaunchView: View {
                 .background(Color(UIColor.secondarySystemBackground))
                 .cornerRadius(12)
                 .padding(.horizontal, 16)
+
+                if model.servers.isEmpty {
+                    Text("You haven't created any servers yet! go create one in the Servers tab.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                }
 
                 if let manager = model.propertiesManager {
                     QuickSettingsView(manager: manager)
