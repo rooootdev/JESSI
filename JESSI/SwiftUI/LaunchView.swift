@@ -591,7 +591,7 @@ struct LaunchView: View {
                 .padding(.horizontal, 16)
 
                 if model.servers.isEmpty {
-                    Text("You haven't created any servers yet! go create one in the Servers tab.")
+                    Text("You haven't created any servers yet! Go create one in the Servers tab.")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
