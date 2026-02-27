@@ -31,7 +31,7 @@ struct SheetItem: Identifiable {
 
     @objc public static func makeServerManagerViewController() -> UIViewController {
         configureListAppearance()
-        let view = ServerManagerView()
+        let view = ServerManagerView().environmentObject(TourManager())
         let hosting = UIHostingController(rootView: view)
         hosting.title = "Server Manager"
         return hosting
@@ -39,7 +39,7 @@ struct SheetItem: Identifiable {
 
     @objc public static func makeLaunchViewController() -> UIViewController {
         configureListAppearance()
-        let view = LaunchView()
+        let view = LaunchView().environmentObject(TourManager())
         let hosting = UIHostingController(rootView: view)
         hosting.title = "Launch"
         return hosting
@@ -47,7 +47,7 @@ struct SheetItem: Identifiable {
 
     @objc public static func makeSettingsViewController() -> UIViewController {
         configureListAppearance()
-        let view = SettingsView()
+        let view = SettingsView().environmentObject(TourManager())
         let hosting = UIHostingController(rootView: view)
         hosting.title = "Settings"
         return hosting
@@ -101,6 +101,7 @@ final class ServerListModel: ObservableObject {
 }
 
 struct ServerManagerView: View {
+    @EnvironmentObject var tourManager: TourManager
     @StateObject private var model = ServerListModel()
     @State private var showingCreateServer: Bool = false
 
@@ -222,13 +223,6 @@ struct ServerManagerView: View {
                                     .foregroundColor(.primary)
 
                                 Spacer()
-
-                                if #available(iOS 18.0, *) {
-                                    EmptyView()
-                                } else {
-                                    Image(systemName: "chevron.right")
-                                        .foregroundColor(.secondary)
-                                }
                             }
                             .padding(.vertical, 6)
                             .contentShape(Rectangle())
@@ -320,5 +314,39 @@ struct ServerManagerView: View {
                 )
             }
         }
+        .overlay(
+            Group {
+                if tourManager.tourState == 3 {
+                    VStack {
+                        VStack(spacing: 16) {
+                            Text("Step 2: Create a Server")
+                                .font(.headline)
+                            Text("Tap the \"Create New Server\" button to create your first server! Note: if you use Forge or Neoforge as your server software, the app may crash after the server is created.")
+                                .multilineTextAlignment(.center)
+                                .font(.subheadline)
+                            
+                            Button(action: {
+                                tourManager.nextStep()
+                            }) {
+                                Text("Next")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 16)
+                            }
+                            .foregroundColor(.white)
+                            .background(Color.green)
+                            .cornerRadius(14)
+                        }
+                        .padding()
+                        .background(Color(UIColor.secondarySystemBackground))
+                        .cornerRadius(16)
+                        .shadow(radius: 10)
+                        .padding()
+                        
+                        Spacer()
+                    }
+                }
+            }
+        )
     }
 }

@@ -530,6 +530,7 @@ final class SettingsModel: ObservableObject {
 }
 
 struct SettingsView: View {
+    @EnvironmentObject var tourManager: TourManager
     @StateObject private var model = SettingsModel()
 
     @State private var showInstallDropdown: Bool = false
@@ -869,6 +870,39 @@ struct SettingsView: View {
                 }
             }
         }
+        .overlay(
+            Group {
+                if tourManager.tourState == 2 {
+                    VStack {
+                        Spacer()
+                        VStack(spacing: 16) {
+                            Text("Step 1: Install the JVM")
+                                .font(.headline)
+                            Text("In order to run a Minecraft server, JESSI needs a JVM (Java Virtual Machine). If you don't know which one to install, install Java 21.")
+                                .multilineTextAlignment(.center)
+                                .font(.subheadline)
+                            
+                            Button(action: {
+                                tourManager.nextStep()
+                            }) {
+                                Text("Next")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 16)
+                            }
+                            .foregroundColor(.white)
+                            .background(Color.green)
+                            .cornerRadius(14)
+                        }
+                        .padding()
+                        .background(Color(UIColor.secondarySystemBackground))
+                        .cornerRadius(16)
+                        .shadow(radius: 10)
+                        .padding()
+                    }
+                }
+            }
+        )
     }
 }
 

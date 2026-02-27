@@ -451,6 +451,7 @@ struct AdvancedSettingsView: View {
 }
 
 struct LaunchView: View {
+    @EnvironmentObject var tourManager: TourManager
     @StateObject private var model = LaunchModel()
     @State private var exitAfterStopRequested = false
     @State private var showAdvancedSettings = false
@@ -660,6 +661,46 @@ struct LaunchView: View {
 
             model.reloadServers()
         }
+        .overlay(
+            Group {
+                if tourManager.tourState == 4 {
+                    VStack {
+                        Spacer()
+                        VStack(spacing: 16) {
+                            Text("Step 3: Launch your Server")
+                                .font(.headline)
+                            
+                            if jessi_check_jit_enabled() {
+                                Text("Your server is ready to go! Make sure that the correct server is selected, then tap the Start button.")
+                                    .multilineTextAlignment(.center)
+                                    .font(.subheadline)
+                            } else {
+                                Text("Your server is ready to go! However, before you start your server, make sure that you have JIT enabled.")
+                                    .multilineTextAlignment(.center)
+                                    .font(.subheadline)
+                            }
+                            
+                            Button(action: {
+                                tourManager.nextStep()
+                            }) {
+                                Text("Finish Tour")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 16)
+                            }
+                            .foregroundColor(.white)
+                            .background(Color.green)
+                            .cornerRadius(14)
+                        }
+                        .padding()
+                        .background(Color(UIColor.secondarySystemBackground))
+                        .cornerRadius(16)
+                        .shadow(radius: 10)
+                        .padding()
+                    }
+                }
+            }
+        )
     }
 
     private var createButtonBottomPadding: CGFloat {
