@@ -1377,12 +1377,12 @@ struct TunnelingView: View {
     @ViewBuilder
     private var tunnelingSection: some View {
         Section {
-            tunnelingPickerRow
-            installToggleRow
+            tunnelingPickerRow.normalizedSeparator()
+            installToggleRow.normalizedSeparator()
 
             if showInstallDropdown {
                 installList
-                installButton
+                installButton.normalizedSeparator()
             }
         } header: {
             Text("Tunneling")
@@ -1448,6 +1448,7 @@ struct TunnelingView: View {
                 onToggle: { toggleSelection(info.id) }
             )
             .disabled(installInProgress)
+            .normalizedSeparator()
         }
 
         ForEach(installed) { info in
@@ -1459,6 +1460,7 @@ struct TunnelingView: View {
                 onToggle: { }
             )
             .disabled(true)
+            .normalizedSeparator()
         }
         .onDelete { offsets in
             for i in offsets {
@@ -1501,8 +1503,7 @@ struct TunnelingView: View {
         }
         .buttonStyle(PlainButtonStyle())
         .disabled(installSelection.isEmpty || installInProgress)
-        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-        .listRowBackground(Color(UIColor.secondarySystemBackground))
+        .normalizedSeparator()
         .transition(.opacity)
     }
 
@@ -1517,6 +1518,7 @@ struct TunnelingView: View {
                         .foregroundColor(playitmodel.status.lowercased().contains("disconnected") ? .secondary : .green)
                     .buttonStyle(BorderlessButtonStyle())
                 }
+                .normalizedSeparator()
 
                 if let address = playitmodel.lastaddr, !address.isEmpty {
                     HStack {
@@ -1535,6 +1537,7 @@ struct TunnelingView: View {
                         }
                         .buttonStyle(BorderlessButtonStyle())
                     }
+                    .normalizedSeparator()
                 }
 
                 Button(action: {
@@ -1552,6 +1555,7 @@ struct TunnelingView: View {
                     }
                 }
                 .buttonStyle(PlainButtonStyle())
+                .normalizedSeparator()
 
                 Button("Reset Playit Link") {
                     playitmodel.resetlink()
@@ -1559,12 +1563,14 @@ struct TunnelingView: View {
                 .disabled(!playitmodel.linked)
                 .foregroundColor(.red)
                 .buttonStyle(PlainButtonStyle())
+                .normalizedSeparator()
                 
                 Button("Clear Playit Cache") {
                     playitmodel.clearCache()
                 }
                 .foregroundColor(.red)
                 .buttonStyle(PlainButtonStyle())
+                .normalizedSeparator()
             } header: {
                 Text("Playit")
             } footer: {
@@ -1761,31 +1767,31 @@ struct ConnectionSectionView: View {
     var body: some View {
         Group {
             Section {
-                serviceRow
+                serviceRow.normalizedSeparator()
 
                 if isNoneSelected {
-                    noneSelectedRow
+                    noneSelectedRow.normalizedSeparator()
                 } else if isUpnpSelected {
-                    upnpPortsRow
-                    upnpTestRow
-                    upnpClearRow
-                    upnpResultRow
+                    upnpPortsRow.normalizedSeparator()
+                    upnpTestRow.normalizedSeparator()
+                    upnpClearRow.normalizedSeparator()
+                    upnpResultRow.normalizedSeparator()
                 } else {
                     if playitmodel.islibrarypresent {
-                        statusRow
+                        statusRow.normalizedSeparator()
 
                         if let address = playitmodel.lastaddr, !address.isEmpty {
-                            addressRow(address)
+                            addressRow(address).normalizedSeparator()
                         }
 
-                        linkRow
-                        resetRow
-                        clearCacheRow
-                        startRow
+                        linkRow.normalizedSeparator()
+                        resetRow.normalizedSeparator()
+                        clearCacheRow.normalizedSeparator()
+                        startRow.normalizedSeparator()
                     } else {
-                        installStatusRow
+                        installStatusRow.normalizedSeparator()
                         if !isPlayitInstalling {
-                            retryInstallRow
+                            retryInstallRow.normalizedSeparator()
                         }
                     }
                 }
@@ -1965,8 +1971,14 @@ struct ConnectionSectionView: View {
     }
 
     private var resetRow: some View {
-        Button("Reset Playit Link") {
+        Button(action: {
             playitmodel.resetlink()
+        }) {
+            HStack {
+                Text("Reset Playit Link")
+                Spacer()
+            }
+            .contentShape(Rectangle())
         }
         .disabled(!playitmodel.linked)
         .foregroundColor(.red)
@@ -1974,8 +1986,14 @@ struct ConnectionSectionView: View {
     }
 
     private var clearCacheRow: some View {
-        Button("Clear Playit Cache") {
+        Button(action: {
             playitmodel.clearCache()
+        }) {
+            HStack {
+                Text("Clear Playit Cache")
+                Spacer()
+            }
+            .contentShape(Rectangle())
         }
         .foregroundColor(.red)
         .buttonStyle(PlainButtonStyle())

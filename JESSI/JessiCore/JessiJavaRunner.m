@@ -446,7 +446,6 @@ static void jessi_preflight_dlopen_path(const char *label, const char *path) {
     JessiDlopenCtx dlCtx = { .path = path, .flags = RTLD_GLOBAL | RTLD_NOW };
     void *h = jessi_run_with_hw_breakpoints(jessi_dlopen_trampoline, &dlCtx);
     if (!h) {
-        const char *err = dlerror();
         JESSI_TXM_LOG("[JESSI] Preflight dlopen(%s) failed for %s: %s\n", label ? label : "?", path, err ? err : "unknown");
     } else {
         JESSI_TXM_LOG("[JESSI] Preflight dlopen(%s) OK: %s\n", label ? label : "?", path);

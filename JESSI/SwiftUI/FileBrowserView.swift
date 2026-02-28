@@ -100,6 +100,7 @@ struct FileBrowserView: View {
                                 Label("Delete", systemImage: "trash")
                             }
                         }
+                        .normalizedSeparator()
                     }
                     .onDelete { indexSet in
                         guard let idx = indexSet.first else { return }
@@ -249,12 +250,26 @@ struct FileBrowserView: View {
         alert = .error(message)
     }
 
+    private static let editableExtensions: Set<String> = [
+        "txt", "log", "json", "yml", "yaml", "toml", "cfg", "conf", "ini",
+        "properties", "xml", "html", "css", "js", "md", "sh", "bat", "cmd",
+        "csv", "env", "gitignore", "lang", "mcmeta", "nbt"
+    ]
+
+    private func isEditableTextFile(_ file: FileItem) -> Bool {
+        let ext = (file.name as NSString).pathExtension.lowercased()
+        if ext.isEmpty { return true }
+        return Self.editableExtensions.contains(ext)
+    }
+
     @ViewBuilder
     private func fileDestination(for file: FileItem) -> some View {
         if file.isDirectory {
             FileBrowserView(directory: file.path, title: file.name)
-        } else {
+        } else if isEditableTextFile(file) {
             TextEditorView(filePath: file.path, title: file.name)
+        } else {
+            NonEditableFileView(fileName: file.name, filePath: file.path)
         }
     }
 
@@ -504,6 +519,104 @@ struct TextEditorView: View {
                     errorMsg = "Save failed: \(error.localizedDescription)"
                 }
             }
+        }
+    }
+}
+
+struct NonEditableFileView: View {
+    let fileName: String
+    let filePath: String
+
+    @State private var shareItem: ShareItemNE? = nil
+
+    private struct ShareItemNE: Identifiable {
+        let id = UUID()
+        let url: URL
+    }
+
+    private struct ShareSheet: UIViewControllerRepresentable {
+        let activityItems: [Any]
+
+        func makeUIViewController(context: Context) -> UIActivityViewController {
+            let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+            if let popover = controller.popoverPresentationController {
+                let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene
+                let window = scene?.windows.first(where: { $0.isKeyWindow }) ?? scene?.windows.first
+                popover.sourceView = window
+                popover.sourceRect = window?.bounds ?? .zero
+            }
+            return controller
+        }
+
+        func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+    }
+
+    private var fileExtension: String {
+        (fileName as NSString).pathExtension.lowercased()
+    }
+
+    private var fileSize: String {
+        let fm = FileManager.default
+        guard let attrs = try? fm.attributesOfItem(atPath: filePath),
+              let size = attrs[.size] as? UInt64 else { return "Unknown" }
+        if size < 1024 { return "\(size) B" }
+        if size < 1024 * 1024 { return String(format: "%.1f KB", Double(size) / 1024) }
+        return String(format: "%.1f MB", Double(size) / (1024 * 1024))
+    }
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Spacer()
+
+            Image(systemName: iconForExtension(fileExtension))
+                .resizable()
+                .scaledToFit()
+                .frame(width: 64, height: 64)
+                .foregroundColor(.secondary)
+
+            VStack(spacing: 6) {
+                Text(fileName)
+                    .font(.headline)
+                    .multilineTextAlignment(.center)
+
+                Text(fileSize)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+
+            Text("This file type cannot be edited in JESSI.")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+
+            Button(action: {
+                shareItem = ShareItemNE(url: URL(fileURLWithPath: filePath))
+            }) {
+                Label("Share", systemImage: "square.and.arrow.up")
+                    .font(.system(size: 17, weight: .semibold))
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 32)
+            }
+            .foregroundColor(.white)
+            .background(Color.green)
+            .cornerRadius(12)
+
+            Spacer()
+        }
+        .navigationBarTitle(fileName, displayMode: .inline)
+        .sheet(item: $shareItem) { item in
+            ShareSheet(activityItems: [item.url])
+        }
+    }
+
+    private func iconForExtension(_ ext: String) -> String {
+        switch ext {
+        case "jar": return "shippingbox.fill"
+        case "png", "jpg", "jpeg", "gif", "bmp", "ico", "webp": return "photo.fill"
+        case "zip", "gz", "tar", "rar", "7z", "xz": return "doc.zipper"
+        case "dat", "dat_old", "mca", "nbt": return "cylinder.fill"
+        default: return "doc.fill"
         }
     }
 }

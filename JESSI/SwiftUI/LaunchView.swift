@@ -449,6 +449,7 @@ struct AdvancedSettingsView: View {
                             .multilineTextAlignment(.trailing)
                         }
                     }
+                    .normalizedSeparator()
                 }
             }
             .navigationTitle("Server Properties")

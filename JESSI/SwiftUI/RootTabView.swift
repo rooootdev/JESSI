@@ -1,5 +1,7 @@
 import SwiftUI
 import Combine
+
+#if canImport(UIKit)
 import UIKit
 
 struct RootTabView: View {
@@ -17,8 +19,18 @@ struct RootTabView: View {
     }
 
 	var body: some View {
+        let tabBinding = Binding<Int>(
+            get: { tourManager.selectedTab },
+            set: { newValue in
+                if tourManager.isTourActive {
+                    tourManager.selectedTab = tourManager.expectedTabForTourState
+                } else {
+                    tourManager.selectedTab = newValue
+                }
+            }
+        )
         ZStack {
-            TabView(selection: $tourManager.selectedTab) {
+            TabView(selection: tabBinding) {
                 NavigationView {
                     ServerManagerView()
                 }
@@ -49,6 +61,7 @@ struct RootTabView: View {
             .simultaneousGesture(
                 DragGesture(minimumDistance: 20)
                     .onEnded { gesture in
+                        if tourManager.isTourActive { return }
                         handleTabSwipe(gesture)
                     }
             )
@@ -115,6 +128,10 @@ class TourManager: ObservableObject {
     }
     
     @Published var selectedTab: Int = 1
+
+    var isTourActive: Bool {
+        tourState >= 2 && tourState <= 4
+    }
     
     init() {
         if UserDefaults.standard.object(forKey: tourStateKey) == nil {
@@ -133,6 +150,15 @@ class TourManager: ObservableObject {
         tourState = 5
     }
     
+    var expectedTabForTourState: Int {
+        switch tourState {
+        case 2: return 2
+        case 3: return 0
+        case 4: return 1
+        default: return selectedTab
+        }
+    }
+
     func nextStep() {
         if tourState == 2 {
             tourState = 3
@@ -232,3 +258,56 @@ private struct VisualEffectBlur: UIViewRepresentable {
         uiView.effect = UIBlurEffect(style: style)
     }
 }
+
+#else
+
+struct RootTabView: View {
+    @StateObject private var tourManager = TourManager()
+
+    var body: some View {
+        Text("JESSI requires UIKit/iOS runtime")
+            .environmentObject(tourManager)
+    }
+}
+
+class TourManager: ObservableObject {
+    let maxTabIndex = 2
+    @Published var tourState: Int = 0
+    @Published var selectedTab: Int = 1
+
+    var isTourActive: Bool {
+        tourState >= 2 && tourState <= 4
+    }
+
+    var expectedTabForTourState: Int {
+        switch tourState {
+        case 2: return 2
+        case 3: return 0
+        case 4: return 1
+        default: return selectedTab
+        }
+    }
+
+    func startTour() {
+        tourState = 2
+        selectedTab = 2
+    }
+
+    func skipTour() {
+        tourState = 5
+    }
+
+    func nextStep() {
+        if tourState == 2 {
+            tourState = 3
+            selectedTab = 0
+        } else if tourState == 3 {
+            tourState = 4
+            selectedTab = 1
+        } else if tourState == 4 {
+            tourState = 5
+        }
+    }
+}
+
+#endif

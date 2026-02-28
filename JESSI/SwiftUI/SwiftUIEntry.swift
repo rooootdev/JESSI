@@ -317,6 +317,7 @@ struct ServerManagerView: View {
         .overlay(
             Group {
                 if tourManager.tourState == 3 {
+                    let hasServers = !model.folders.isEmpty
                     VStack {
                         VStack(spacing: 16) {
                             Text("Step 2: Create a Server")
@@ -325,6 +326,12 @@ struct ServerManagerView: View {
                                 .multilineTextAlignment(.center)
                                 .font(.subheadline)
                             
+                            if !hasServers {
+                                Text("Create a server to continue.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+
                             Button(action: {
                                 tourManager.nextStep()
                             }) {
@@ -334,8 +341,9 @@ struct ServerManagerView: View {
                                     .padding(.vertical, 16)
                             }
                             .foregroundColor(.white)
-                            .background(Color.green)
+                            .background(hasServers ? Color.green : Color.gray.opacity(0.35))
                             .cornerRadius(14)
+                            .disabled(!hasServers)
                         }
                         .padding()
                         .background(Color(UIColor.secondarySystemBackground))

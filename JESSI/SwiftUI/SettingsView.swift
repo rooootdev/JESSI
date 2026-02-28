@@ -5,6 +5,18 @@ import Darwin
 import ZIPFoundation
 import SWCompression
 
+extension View {
+    @ViewBuilder
+    func normalizedSeparator() -> some View {
+        if #available(iOS 16.0, *) {
+            self.alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+                .alignmentGuide(.listRowSeparatorTrailing) { d in d[.trailing] }
+        } else {
+            self
+        }
+    }
+}
+
 private struct InstallJVMRow: View {
     let version: String
     let isInstalled: Bool
@@ -70,6 +82,11 @@ final class SettingsModel: ObservableObject {
 
     @Published var installErrorMessage: String? = nil
     @Published var showInstallError: Bool = false
+    @Published var jvmDownloadProgress: Double = 0
+    @Published var currentlyInstallingVersion: String = ""
+
+    private var activeJVMSession: URLSession? = nil
+    private var activeJVMDelegate: JVMDownloadProgressDelegate? = nil
 
     let allJVMVersions: [String] = ["8", "17", "21"]
 
@@ -164,7 +181,7 @@ final class SettingsModel: ObservableObject {
 
     var heapDescription: String {
         if heapMB < 513 { return "Low — the server will be highly unstable with this little ram" }
-        if heapMB > 4095 { return "High — JESSI may crash!" }
+        if heapMB > Int(Double(ProcessInfo.processInfo.physicalMemory) * 0.8 / (1024 * 1024)) { return "High — JESSI may crash!" }
         return "Recommended: approximately half of your device's total ram. if you exceed the amount of ram your device has available, JESSI will crash!"
     }
 
@@ -380,6 +397,11 @@ final class SettingsModel: ObservableObject {
             return
         }
 
+        DispatchQueue.main.async {
+            self.currentlyInstallingVersion = version
+            self.jvmDownloadProgress = 0
+        }
+
         let outerFM = FileManager.default
         let tmpRoot = outerFM.temporaryDirectory.appendingPathComponent("jessi-jvm-install", isDirectory: true)
         let workDir = tmpRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -395,8 +417,24 @@ final class SettingsModel: ObservableObject {
             return
         }
 
-        let task = URLSession.shared.downloadTask(with: url) { tempURL, _, error in
+        let progressDelegate = JVMDownloadProgressDelegate { [weak self] fraction in
+            DispatchQueue.main.async {
+                self?.jvmDownloadProgress = fraction
+            }
+        }
+        let session = URLSession(configuration: .default, delegate: progressDelegate, delegateQueue: nil)
+        self.activeJVMDelegate = progressDelegate
+        self.activeJVMSession = session
+        var progressTimer: DispatchSourceTimer?
+        let task = session.downloadTask(with: url) { tempURL, _, error in
             let fm = FileManager.default
+            defer {
+                progressTimer?.cancel()
+                progressTimer = nil
+                self.activeJVMSession = nil
+                self.activeJVMDelegate = nil
+                session.finishTasksAndInvalidate()
+            }
             if let error {
                 completion(.failure(error))
                 return
@@ -463,11 +501,30 @@ final class SettingsModel: ObservableObject {
                 }
                 try fm.moveItem(at: staging, to: finalDir)
 
+                DispatchQueue.main.async {
+                    self.jvmDownloadProgress = 1
+                }
+
                 completion(.success(()))
             } catch {
                 completion(.failure(error))
             }
         }
+
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
+        timer.schedule(deadline: .now(), repeating: .milliseconds(120))
+        timer.setEventHandler { [weak task] in
+            guard let task = task else { return }
+            let expected = task.countOfBytesExpectedToReceive
+            let received = task.countOfBytesReceived
+            guard expected > 0, received >= 0 else { return }
+            let fraction = min(max(Double(received) / Double(expected), 0), 1)
+            DispatchQueue.main.async {
+                self.jvmDownloadProgress = fraction
+            }
+        }
+        progressTimer = timer
+        timer.resume()
 
         task.resume()
     }
@@ -589,6 +646,7 @@ struct SettingsView: View {
                 .onChange(of: model.javaVersion) { newValue in
                     model.applyAndSaveJavaVersion(newValue)
                 }
+                .normalizedSeparator()
 
                 Button(action: {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
@@ -606,6 +664,7 @@ struct SettingsView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())
+                .normalizedSeparator()
 
                 if showInstallDropdown {
                     let nonInstalled = model.allJVMVersions.filter { !model.installedJVMVersions.contains($0) }
@@ -621,6 +680,7 @@ struct SettingsView: View {
                             onToggle: { toggleSelection(ver) }
                         )
                         .disabled(installInProgress || (model.isIOS26 && ver == "8"))
+                        .normalizedSeparator()
                     }
 
                     ForEach(installed, id: \.self) { ver in
@@ -633,6 +693,7 @@ struct SettingsView: View {
                             onToggle: { }
                         )
                         .disabled(true)
+                        .normalizedSeparator()
                     }
                     .onDelete { offsets in
                         for i in offsets {
@@ -673,18 +734,39 @@ struct SettingsView: View {
                     }
                     .buttonStyle(PlainButtonStyle())
                     .disabled(installSelection.isEmpty || installInProgress)
-                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-                    .listRowBackground(Color(UIColor.secondarySystemBackground))
+                    .normalizedSeparator()
                     .transition(.opacity)
+
+                    if installInProgress {
+                        VStack(spacing: 0) {
+                            if model.jvmDownloadProgress > 0 {
+                                ProgressView(value: model.jvmDownloadProgress)
+                                    .progressViewStyle(LinearProgressViewStyle(tint: .green))
+                            } else {
+                                ProgressView()
+                                    .progressViewStyle(LinearProgressViewStyle(tint: .green))
+                            }
+                            Text(model.jvmDownloadProgress > 0
+                                ? "Downloading Java \(model.currentlyInstallingVersion)…"
+                                : "Preparing Java \(model.currentlyInstallingVersion) download…")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .padding(.top, 8)
+                                .padding(.bottom, 2)
+                        }
+                        .normalizedSeparator()
+                        .transition(.opacity)
+                    }
                 }
 
-                HStack(alignment: .center, spacing: 12) {
+                HStack(spacing: 12) {
                     Text("Launch Arguments")
                     Spacer()
                     DoneToolbarTextField(text: $model.launchArgs, placeholder: "Advanced users only", keyboardType: .default, textAlignment: .right, onEndEditing: { model.applyAndSaveLaunchArgs() })
                         .frame(maxWidth: 420)
                         .onChange(of: model.launchArgs) { _ in model.applyAndSaveLaunchArgs() }
                 }
+                .normalizedSeparator()
             } header: {
                 Text("Java")
             } footer: {
@@ -700,19 +782,17 @@ struct SettingsView: View {
             ConnectionSectionView()
 
             Section(header: Text("Miscellaneous"), footer: Text(model.heapDescription)) {
-                
                 if model.isTrollStore {
                     Toggle("Run in Background", isOn: $model.runInBackground)
                         .onChange(of: model.runInBackground) { _ in model.applyAndSaveFlags() }
+                        .normalizedSeparator()
                 }
 
-                HStack(alignment: .center, spacing: 12) {
+                HStack(spacing: 12) {
                     CurseForgeField(model: model)
-                    .frame(maxWidth: 420)
-                    .onChange(of: model.curseForgeAPIKey) { _ in
-                        model.applyAndSaveCurseForgeAPIKey()
-                    }
-                }   
+                        .frame(maxWidth: 420)
+                }
+                .normalizedSeparator()
 
                 HStack(spacing: 12) {
                     Text("Allocated RAM")
@@ -727,6 +807,7 @@ struct SettingsView: View {
                     )
                     .frame(width: 92)
                 }
+                .normalizedSeparator()
 
                 VStack(alignment: .leading, spacing: 12) {
                     Slider(
@@ -738,8 +819,8 @@ struct SettingsView: View {
                         step: 64
                     )
                 }
-
-            }            
+                .normalizedSeparator()
+            }
 
             Section(header: Text("System")) {
                 HStack {
@@ -747,6 +828,10 @@ struct SettingsView: View {
                     Spacer()
                     Text(model.isJITEnabled ? "Yes" : "No")
                 }
+                .onTapGesture(count: 5) {
+                    UserDefaults.standard.set(0, forKey: "tourState")
+                }
+                .normalizedSeparator()
                 HStack {
                     Text("TrollStore Detected")
                     Spacer()
@@ -759,22 +844,25 @@ struct SettingsView: View {
                         }
                     }
                 }
+                .normalizedSeparator()
                 HStack {
                     Text("iOS Version")
                     Spacer()
                     Text(model.iOSVersionString)
                 }
+                .normalizedSeparator()
                 HStack {
                     Text("Total RAM")
                     Spacer()
                     Text(model.totalRAM)
                 }
+                .normalizedSeparator()
                 HStack {
                     Text("Available RAM (estimated)")
                     Spacer()
                     Text(model.freeRAM)
                 }
-
+                .normalizedSeparator()
             }
 
             Section {
@@ -873,6 +961,8 @@ struct SettingsView: View {
         .overlay(
             Group {
                 if tourManager.tourState == 2 {
+                    let hasJVM = !model.installedJVMVersions.isEmpty
+                    let canContinueTour = hasJVM || installInProgress
                     VStack {
                         Spacer()
                         VStack(spacing: 16) {
@@ -882,6 +972,18 @@ struct SettingsView: View {
                                 .multilineTextAlignment(.center)
                                 .font(.subheadline)
                             
+                            if installInProgress && !hasJVM {
+                                Text("JVM install started. You can continue while it downloads in the background.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                            } else if !hasJVM {
+                                Text("Install a JVM above to continue.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                            }
+
                             Button(action: {
                                 tourManager.nextStep()
                             }) {
@@ -891,8 +993,9 @@ struct SettingsView: View {
                                     .padding(.vertical, 16)
                             }
                             .foregroundColor(.white)
-                            .background(Color.green)
+                            .background(canContinueTour ? Color.green : Color.gray.opacity(0.35))
                             .cornerRadius(14)
+                            .disabled(!canContinueTour)
                         }
                         .padding()
                         .background(Color(UIColor.secondarySystemBackground))
@@ -964,4 +1067,21 @@ struct CurseForgeFooter: View {
 @available(iOS 15, *)
 extension URL: Identifiable {
     public var id: String { absoluteString }
+}
+
+private class JVMDownloadProgressDelegate: NSObject, URLSessionDownloadDelegate {
+    let onProgress: (Double) -> Void
+
+    init(onProgress: @escaping (Double) -> Void) {
+        self.onProgress = onProgress
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        guard totalBytesExpectedToWrite > 0 else { return }
+        let fraction = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
+        onProgress(min(max(fraction, 0), 1))
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+    }
 }
