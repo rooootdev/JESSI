@@ -12,6 +12,8 @@ bool jessi_is_ios26_or_later(void);
 bool jessi_is_txm_device(void);
 
 bool jessi_is_trollstore_installed(void);
+bool jessi_is_livecontainer_installed(void);
+const char * _Nullable jessi_team_identifier(void);
 
 #ifdef __cplusplus
 }

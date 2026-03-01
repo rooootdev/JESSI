@@ -89,3 +89,45 @@ BOOL jessi_is_trollstore_installed(void) {
     NSString *tsPath = [NSString stringWithFormat:@"%@/../_TrollStore", NSBundle.mainBundle.bundlePath];
     return access(tsPath.UTF8String, F_OK) == 0;
 }
+
+BOOL jessi_is_livecontainer_installed(void) {
+    NSString *bundle = [NSBundle mainBundle].bundlePath;
+    if (bundle.length == 0) return NO;
+
+    NSString *parent = [[bundle stringByResolvingSymlinksInPath] stringByDeletingLastPathComponent];
+    NSString *parentname = parent.lastPathComponent ?: @"";
+    return [parentname caseInsensitiveCompare:@"LiveContainer"] == NSOrderedSame;
+}
+
+const char * _Nullable jessi_team_identifier(void) {
+    SecTaskRef task = SecTaskCreateFromSelf(NULL);
+    if (!task) return NULL;
+
+    CFTypeRef value = SecTaskCopyValueForEntitlement(task, CFSTR("com.apple.developer.team-identifier"), NULL);
+    if (value && CFGetTypeID(value) == CFStringGetTypeID()) {
+        NSString *team = [(__bridge NSString *)value copy];
+        CFRelease(value);
+        if (team.length > 0) {
+            return strdup(team.UTF8String);
+        }
+        return NULL;
+    }
+    if (value) CFRelease(value);
+
+    value = SecTaskCopyValueForEntitlement(task, CFSTR("application-identifier"), NULL);
+    if (value && CFGetTypeID(value) == CFStringGetTypeID()) {
+        NSString *appID = [(__bridge NSString *)value copy];
+        CFRelease(value);
+        if (appID.length > 0) {
+            NSArray<NSString *> *parts = [appID componentsSeparatedByString:@"."];
+            NSString *prefix = parts.firstObject ?: @"";
+            if (prefix.length > 0) {
+                return strdup(prefix.UTF8String);
+            }
+        }
+        return NULL;
+    }
+    if (value) CFRelease(value);
+
+    return NULL;
+}

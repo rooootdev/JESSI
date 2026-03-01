@@ -20,6 +20,8 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>APP_GROUP_ID</key>
+	<string>$(APP_GROUP_ID)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
@@ -35,6 +37,10 @@
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>JESSI needs access to your local network so other devices on your Wi-Fi can connect to Minecraft servers ran by the app.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>JESSI uses location access to keep the app alive in the background when this option is enabled. Your location is not stored.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>JESSI uses location access to keep the app alive in the background when this option is enabled. Your location is not stored.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
@@ -43,6 +49,7 @@
 	<array>
 		<string>audio</string>
 		<string>fetch</string>
+		<string>location</string>
 		<string>processing</string>
 	</array>
 	<key>UIFileSharingEnabled</key>

@@ -2,6 +2,7 @@ import SwiftUI
 import Combine
 import UIKit
 import Darwin
+import CoreLocation
 import ZIPFoundation
 import SWCompression
 
@@ -13,6 +14,114 @@ extension View {
                 .alignmentGuide(.listRowSeparatorTrailing) { d in d[.trailing] }
         } else {
             self
+        }
+    }
+}
+
+final class keepalivemgr: NSObject, CLLocationManagerDelegate {
+    static let shared = keepalivemgr()
+    static let enabledkey = "jessi.keepalive.background"
+    static let authchangednotif = Notification.Name("jessi.keepalive.authorization.changed")
+
+    private let locationmgr = CLLocationManager()
+    private(set) var isrunning = false
+    var authstat: CLAuthorizationStatus { currentauthstat() }
+    var appgroupid = Bundle.main.object(forInfoDictionaryKey: "APP_GROUP_ID") as? String
+    var bundle = Bundle.main.bundleIdentifier
+
+    private override init() {
+        super.init()
+        locationmgr.delegate = self
+        locationmgr.distanceFilter = CLLocationDistanceMax
+        locationmgr.pausesLocationUpdatesAutomatically = false
+        locationmgr.allowsBackgroundLocationUpdates = true
+        if #available(iOS 14.0, *) {
+            locationmgr.desiredAccuracy = kCLLocationAccuracyReduced
+        } else {
+            locationmgr.desiredAccuracy = kCLLocationAccuracyThreeKilometers
+        }
+    }
+
+    func startIfEnabled() {
+        if UserDefaults.standard.bool(forKey: Self.enabledkey) {
+            start()
+        } else {
+            stop()
+        }
+    }
+
+    func setenabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: Self.enabledkey)
+        if enabled {
+            start()
+        } else {
+            stop()
+        }
+    }
+
+    func requestalwaysauth() {
+        locationmgr.requestAlwaysAuthorization()
+    }
+
+    private func start() {
+        let status = currentauthstat()
+        switch status {
+        case .notDetermined, .authorizedWhenInUse:
+            locationmgr.requestAlwaysAuthorization()
+        case .authorizedAlways:
+            locationmgr.startUpdatingLocation()
+            isrunning = true
+        default:
+            stop()
+        }
+    }
+
+    private func stop() {
+        locationmgr.stopUpdatingLocation()
+        isrunning = false
+    }
+
+    private func currentauthstat() -> CLAuthorizationStatus {
+        if #available(iOS 14.0, *) {
+            return locationmgr.authorizationStatus
+        } else {
+            return type(of: locationmgr).authorizationStatus()
+        }
+    }
+
+    private func handleauthchange(_ status: CLAuthorizationStatus) {
+        NotificationCenter.default.post(name: Self.authchangednotif, object: nil)
+        switch status {
+        case .authorizedAlways:
+            startIfEnabled()
+        case .denied, .restricted, .authorizedWhenInUse:
+            stop()
+        case .notDetermined:
+            break
+        @unknown default:
+            break
+        }
+    }
+
+    func getteam() -> String? {
+        guard let cstr = jessi_team_identifier() else { return nil }
+        defer { free(UnsafeMutableRawPointer(mutating: cstr)) }
+        let value = String(cString: cstr)
+        return value.isEmpty ? nil : value
+    }
+
+    @available(iOS 14.0, *)
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        handleauthchange(manager.authorizationStatus)
+    }
+
+    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
+        handleauthchange(status)
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        if let clErr = error as? CLError, clErr.code == .denied {
+            stop()
         }
     }
 }
@@ -75,6 +184,7 @@ final class SettingsModel: ObservableObject {
     @Published var isIOS26: Bool = false
     @Published var iOSVersionString: String = ""
     @Published var isTrollStore: Bool = false
+    @Published var islivecontainer: Bool = false
 
     @Published var installedJVMVersions: Set<String> = []
 
@@ -123,6 +233,7 @@ final class SettingsModel: ObservableObject {
         runInBackground = s.runInBackground
         isIOS26 = jessi_is_ios26_or_later()
         isTrollStore = jessi_is_trollstore_installed()
+        islivecontainer = jessi_is_livecontainer_installed()
 
         refreshInstalledJVMVersions()
     }
@@ -589,6 +700,9 @@ final class SettingsModel: ObservableObject {
 struct SettingsView: View {
     @EnvironmentObject var tourManager: TourManager
     @StateObject private var model = SettingsModel()
+    @AppStorage(keepalivemgr.enabledkey) private var keepalive: Bool = false
+    @State private var keepaliveauthstat: CLAuthorizationStatus = keepalivemgr.shared.authstat
+    @State private var showkeepalivepermprompt = false
 
     @State private var showInstallDropdown: Bool = false
     @AppStorage("jessi.jvm.install.inProgress") private var installInProgress: Bool = false
@@ -605,6 +719,21 @@ struct SettingsView: View {
 
     private func refreshLocalIP() {
         localIP = bestLocalIPAddress() ?? "Unavailable"
+    }
+
+    private var alwaysshowpermsbtn: Bool {
+        keepaliveauthstat == .authorizedWhenInUse
+    }
+
+    private func refreshkeepaliveauthstat() {
+        keepaliveauthstat = keepalivemgr.shared.authstat
+    }
+
+    private func openlocsettings() {
+        let teamID = keepalivemgr.shared.getteam() ?? ""
+        let liveContainerID = teamID.isEmpty ? "" : "com.baconmania.jessi.\(teamID)"
+        guard let url = URL(string: "prefs:root=Privacy&path=LOCATION/\(liveContainerID)") else { return }
+        UIApplication.shared.open(url)
     }
 
     private func fetchPublicIPIfNeeded(force: Bool = false) {
@@ -872,6 +1001,44 @@ struct SettingsView: View {
 
             ConnectionSectionView()
 
+            Section {
+                Text(keepalivemgr.shared.bundle ?? "unknown.bundle")
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .normalizedSeparator()
+
+                if let teamid = keepalivemgr.shared.getteam() {
+                    Text("com.kdt.LiveContainer." + teamid)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .normalizedSeparator()
+                } else {
+                    Text("dunno")
+                        .normalizedSeparator()
+                }
+
+                Toggle("Keep Alive in Background", isOn: Binding(
+                    get: { keepalive },
+                    set: { newvalue in
+                        keepalive = newvalue
+                        keepalivemgr.shared.setenabled(newvalue)
+                        refreshkeepaliveauthstat()
+                    }
+                ))
+                .normalizedSeparator()
+
+                if alwaysshowpermsbtn {
+                    Button("Enable Always Location") {
+                        showkeepalivepermprompt = true
+                    }
+                    .normalizedSeparator()
+                }
+            } header: {
+                Text("Keep Alive")
+            } footer: {
+                Text("EXPERIMENTAL - Keeps JESSI alive when its not foregrounded. I dont know if this works, ask bacon to fix it if it doesnt.")
+            }
+
             Section(header: Text("Miscellaneous"), footer: Text(model.heapDescription)) {
                 if model.isTrollStore {
                     Toggle("Run in Background", isOn: $model.runInBackground)
@@ -934,6 +1101,12 @@ struct SettingsView: View {
                             UIApplication.shared.open(url)
                         }
                     }
+                }
+                .normalizedSeparator()
+                HStack {
+                    Text("LiveContainer Detected")
+                    Spacer()
+                    Text(model.islivecontainer ? "Yes" : "No")
                 }
                 .normalizedSeparator()
                 HStack {
@@ -1014,6 +1187,9 @@ struct SettingsView: View {
                     }
                     .padding(.vertical, 16)
                     .padding(.horizontal, 16)
+                    .onTapGesture {
+                        UIApplication.shared.open(URL(string: "https://github.com/baconium")!, options: [:], completionHandler: nil)
+                    }
 
                     Rectangle()
                         .fill(Color(UIColor.separator))
@@ -1039,6 +1215,9 @@ struct SettingsView: View {
                     }
                     .padding(.vertical, 16)
                     .padding(.horizontal, 16)
+                    .onTapGesture {
+                        UIApplication.shared.open(URL(string: "https://github.com/rooootdev")!, options: [:], completionHandler: nil)
+                    }
                 }
                 .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
             } header: {
@@ -1049,12 +1228,33 @@ struct SettingsView: View {
         .listStyle(InsetGroupedListStyle())
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .actionSheet(isPresented: $showkeepalivepermprompt) {
+            ActionSheet(
+                title: Text("Keep Alive requires Always Location"),
+                message: Text("Current permission is When In Use. Elevate to Always to keep JESSI alive in the background."),
+                buttons: [
+                    .default(Text("Try Prompt")) {
+                        keepalivemgr.shared.requestalwaysauth()
+                    },
+                    .default(Text("Open Settings")) {
+                        openlocsettings()
+                    },
+                    .cancel()
+                ]
+            )
+        }
         .alert(isPresented: $model.showInstallError) {
             Alert(
                 title: Text("JVM Install Failed"),
                 message: Text(model.installErrorMessage ?? "Unknown error"),
                 dismissButton: .default(Text("OK"))
             )
+        }
+        .onReceive(NotificationCenter.default.publisher(for: keepalivemgr.authchangednotif)) { _ in
+            refreshkeepaliveauthstat()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            refreshkeepaliveauthstat()
         }
         
         .onAppear {
@@ -1069,6 +1269,8 @@ struct SettingsView: View {
 
             model.refreshAvailableJavaVersions()
             model.refreshInstalledJVMVersions()
+            keepalivemgr.shared.startIfEnabled()
+            refreshkeepaliveauthstat()
 
             setInstallSelection(installSelection.subtracting(model.installedJVMVersions))
 
