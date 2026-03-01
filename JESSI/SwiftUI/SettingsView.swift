@@ -24,6 +24,7 @@ final class keepalivemgr: NSObject, CLLocationManagerDelegate {
     enum keepalivemethod: String, CaseIterable {
         case location
         case audio
+        case trollstore
     }
 
     static let shared = keepalivemgr()
@@ -103,6 +104,8 @@ final class keepalivemgr: NSObject, CLLocationManagerDelegate {
             }
         case .audio:
             isrunning = keepaliveaudio()
+        case .trollstore:
+            stop()
         }
     }
 
@@ -886,7 +889,32 @@ struct SettingsView: View {
     }
 
     private var keepalivemethod: keepalivemgr.keepalivemethod {
-        keepalivemgr.keepalivemethod(rawValue: keepalivemethodraw) ?? .location
+        if !model.isTrollStore,
+           keepalivemethodraw == keepalivemgr.keepalivemethod.trollstore.rawValue {
+            return .location
+        }
+        return keepalivemgr.keepalivemethod(rawValue: keepalivemethodraw) ?? .location
+    }
+
+    private var keepAliveEnabledBinding: Binding<Bool> {
+        if keepalivemethod == .trollstore {
+            return Binding(
+                get: { model.runInBackground },
+                set: { newValue in
+                    model.runInBackground = newValue
+                    model.applyAndSaveFlags()
+                }
+            )
+        }
+
+        return Binding(
+            get: { keepalive },
+            set: { newValue in
+                keepalive = newValue
+                keepalivemgr.shared.setenabled(newValue)
+                refreshkeepaliveauthstat()
+            }
+        )
     }
 
     private func refreshkeepaliveauthstat() {
@@ -1489,7 +1517,6 @@ struct SettingsView: View {
                     }
                 }
             }
-            
             if #available(iOS 17.0, *) {
                 Group {
                     Section {
@@ -1528,7 +1555,13 @@ struct SettingsView: View {
                     Spacer()
                     
                     Picker("Method", selection: Binding(
-                        get: { keepalivemethodraw },
+                        get: {
+                            if !model.isTrollStore,
+                               keepalivemethodraw == keepalivemgr.keepalivemethod.trollstore.rawValue {
+                                return keepalivemgr.keepalivemethod.location.rawValue
+                            }
+                            return keepalivemethodraw
+                        },
                         set: { newval in
                             keepalivemethodraw = newval
                             keepalivemgr.shared.setmethod(raw: newval)
@@ -1537,35 +1570,31 @@ struct SettingsView: View {
                     )) {
                         Text("Location").tag(keepalivemgr.keepalivemethod.location.rawValue)
                         Text("Audio").tag(keepalivemgr.keepalivemethod.audio.rawValue)
+                        if model.isTrollStore {
+                            Text("TrollStore").tag(keepalivemgr.keepalivemethod.trollstore.rawValue)
+                        }
                     }
                     .pickerStyle(.segmented)
                 }
                 .normalizedSeparator()
                 
-                Toggle("Keep Alive in Background", isOn: Binding(
-                    get: { keepalive },
-                    set: { newvalue in
-                        keepalive = newvalue
-                        keepalivemgr.shared.setenabled(newvalue)
-                        refreshkeepaliveauthstat()
-                    }
-                ))
+                Toggle("Keep Alive in Background", isOn: keepAliveEnabledBinding)
                 .normalizedSeparator()
             } header: {
-                Text("keepalive")
+                Text("keep alive")
             } footer: {
                 if keepalivemethod == .location {
-                    Text("Requires 'Always' [Location permission.](app-settings:)")
+                    Text("Requires 'Always' [Location permission.](app-settings:). Your location data will not be collected.")
+                }
+                if keepalivemethod == .audio {
+                    Text("Plays silent audio while the app is closed to keep it alive.")
+                }
+                if keepalivemethod == .trollstore {
+                    Text("Requires TrollStore. Keeps the app alive using TrollStore entitlements.")
                 }
             }
 
             Section(header: Text("Miscellaneous"), footer: Text(model.heapDescription)) {
-                if model.isTrollStore {
-                    Toggle("Run in Background", isOn: $model.runInBackground)
-                        .onChange(of: model.runInBackground) { _ in model.applyAndSaveFlags() }
-                        .normalizedSeparator()
-                }
-
                 HStack(spacing: 12) {
                     CurseForgeField(model: model)
                         .frame(maxWidth: 420)
@@ -1708,7 +1737,7 @@ struct SettingsView: View {
                     .padding(.vertical, 16)
                     .padding(.horizontal, 16)
                     .onTapGesture {
-                        UIApplication.shared.open(URL(string: "https://github.com/baconium")!, options: [:], completionHandler: nil)
+                        UIApplication.shared.open(URL(string: "https://baconium.dev")!, options: [:], completionHandler: nil)
                     }
 
                     Rectangle()
@@ -1795,6 +1824,12 @@ struct SettingsView: View {
             model.heapMB = s.maxHeapMB
             model.heapText = String(s.maxHeapMB)
             model.curseForgeAPIKey = s.curseForgeAPIKey
+
+            if !model.isTrollStore,
+               keepalivemethodraw == keepalivemgr.keepalivemethod.trollstore.rawValue {
+                keepalivemethodraw = keepalivemgr.keepalivemethod.location.rawValue
+                keepalivemgr.shared.setmethod(raw: keepalivemethodraw)
+            }
 
             model.refreshSystemStats()
             refreshLocalIP()
