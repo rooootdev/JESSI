@@ -597,6 +597,97 @@ struct SettingsView: View {
 
     @State private var didAutoResumeInstall: Bool = false
 
+    @State private var localIP: String = "Unavailable"
+    @State private var showPublicIP: Bool = false
+    @State private var publicIP: String? = nil
+    @State private var publicIPError: String? = nil
+    @State private var isFetchingPublicIP: Bool = false
+
+    private func refreshLocalIP() {
+        localIP = bestLocalIPAddress() ?? "Unavailable"
+    }
+
+    private func fetchPublicIPIfNeeded(force: Bool = false) {
+        if isFetchingPublicIP { return }
+        if !force, publicIP != nil { return }
+
+        isFetchingPublicIP = true
+        publicIPError = nil
+
+        guard let url = URL(string: "https://api.ipify.org?format=json") else {
+            isFetchingPublicIP = false
+            publicIPError = "Invalid URL"
+            return
+        }
+
+        URLSession.shared.dataTask(with: url) { data, _, error in
+            DispatchQueue.main.async {
+                self.isFetchingPublicIP = false
+
+                if let error = error {
+                    self.publicIP = nil
+                    self.publicIPError = error.localizedDescription
+                    return
+                }
+                guard let data = data,
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let ip = json["ip"] as? String,
+                      !ip.isEmpty
+                else {
+                    self.publicIP = nil
+                    self.publicIPError = "Failed to parse response"
+                    return
+                }
+
+                self.publicIP = ip
+            }
+        }.resume()
+    }
+
+    private func bestLocalIPAddress() -> String? {
+        var ifaddr: UnsafeMutablePointer<ifaddrs>? = nil
+        guard getifaddrs(&ifaddr) == 0, let first = ifaddr else { return nil }
+        defer { freeifaddrs(ifaddr) }
+
+        var best: (ip: String, score: Int)? = nil
+        var ptr: UnsafeMutablePointer<ifaddrs>? = first
+        while ptr != nil {
+            defer { ptr = ptr?.pointee.ifa_next }
+            guard let p = ptr?.pointee else { continue }
+            guard let addr = p.ifa_addr else { continue }
+
+            let flags = Int32(p.ifa_flags)
+            if (flags & IFF_LOOPBACK) != 0 { continue }
+
+            let family = addr.pointee.sa_family
+            if family != UInt8(AF_INET) && family != UInt8(AF_INET6) { continue }
+
+            let name = String(cString: p.ifa_name)
+            var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            let len = socklen_t(
+                family == UInt8(AF_INET)
+                    ? MemoryLayout<sockaddr_in>.size
+                    : MemoryLayout<sockaddr_in6>.size
+            )
+            let res = getnameinfo(addr, len, &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST)
+            if res != 0 { continue }
+            let ip = String(cString: host)
+            if ip.isEmpty { continue }
+
+            var score = 0
+            if name == "en0" { score += 100 }
+            else if name == "pdp_ip0" { score += 90 }
+            else { score += 10 }
+            if family == UInt8(AF_INET) { score += 5 }
+
+            if best == nil || score > best!.score {
+                best = (ip, score)
+            }
+        }
+
+        return best?.ip
+    }
+
     private var installSelection: Set<String> {
         Set(installSelectionCSV.split(separator: ",").map(String.init))
     }
@@ -851,6 +942,7 @@ struct SettingsView: View {
                     Text(model.iOSVersionString)
                 }
                 .normalizedSeparator()
+
                 HStack {
                     Text("Total RAM")
                     Spacer()
@@ -862,6 +954,41 @@ struct SettingsView: View {
                     Spacer()
                     Text(model.freeRAM)
                 }
+                .normalizedSeparator()
+
+                HStack {
+                    Text("Local IP")
+                    Spacer()
+                    Text(localIP)
+                }
+                .normalizedSeparator()
+
+                Button(action: {
+                    if showPublicIP {
+                        showPublicIP = false
+                    } else {
+                        showPublicIP = true
+                        fetchPublicIPIfNeeded(force: publicIP == nil || publicIPError != nil)
+                    }
+                }) {
+                    HStack {
+                        Text("Public IP")
+                            .foregroundColor(.primary)
+                        Spacer()
+
+                        if !showPublicIP {
+                            Text("Hidden")
+                        } else if isFetchingPublicIP {
+                            Text("Loading...")
+                        } else if let ip = publicIP {
+                            Text(ip)
+                        } else {
+                            Text("Unavailable")
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
                 .normalizedSeparator()
             }
 
@@ -938,6 +1065,7 @@ struct SettingsView: View {
             model.curseForgeAPIKey = s.curseForgeAPIKey
 
             model.refreshSystemStats()
+            refreshLocalIP()
 
             model.refreshAvailableJavaVersions()
             model.refreshInstalledJVMVersions()

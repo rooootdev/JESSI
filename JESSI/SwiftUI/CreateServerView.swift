@@ -22,6 +22,7 @@ struct CreateServerView: View {
     @State private var availableVersions: [String] = []
     @State private var loadingVersions: Bool = false
     @State private var versionFetchError: String? = nil
+    @State private var versionFetchGeneration: Int = 0
 
     @State private var showSoftwareMenu: Bool = false
     @State private var showVersionMenu: Bool = false
@@ -44,6 +45,8 @@ struct CreateServerView: View {
 
     @State private var isCreating: Bool = false
     @State private var createStatus: String = ""
+    @State private var createProgress: Double? = nil
+    @State private var createProgressObservation: NSKeyValueObservation? = nil
     @State private var createError: String? = nil
     @State private var showCreateError: Bool = false
 
@@ -157,9 +160,11 @@ struct CreateServerView: View {
                     .background(FrameReporter(id: "software"))
                     .accessibilityLabel(Text("Software"))
                     .accessibilityValue(Text(software.rawValue))
+                    .normalizedSeparator()
 
 
                     TextField("Server Name", text: $serverName)
+                        .normalizedSeparator()
 
                     if software == .customJar {
                         Button(action: { showingJarImporter = true }) {
@@ -175,6 +180,7 @@ struct CreateServerView: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(PlainButtonStyle())
+                        .normalizedSeparator()
                     } else {
                         if loadingVersions {
                             HStack {
@@ -183,6 +189,7 @@ struct CreateServerView: View {
                                 Text("Loading...")
                                     .foregroundColor(.secondary)
                             }
+                            .normalizedSeparator()
                         } else {
                             Button(action: { openVersionMenu() }) {
                                 HStack {
@@ -196,11 +203,13 @@ struct CreateServerView: View {
                             }
                             .buttonStyle(PlainButtonStyle())
                             .background(FrameReporter(id: "version"))
+                            .normalizedSeparator()
                         }
                         if let err = versionFetchError {
                             Text(err)
                                 .font(.system(size: 12))
                                 .foregroundColor(.secondary)
+                                .normalizedSeparator()
                         }
                     }
 
@@ -218,16 +227,24 @@ struct CreateServerView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .normalizedSeparator()
                 }
 
                 Section(header: Text("Quick Settings (Optional)")) {
                     QuickSettingValueRow(title: "Max Players", defaultValue: "20", text: $maxPlayers, keyboardType: .numberPad)
+                        .normalizedSeparator()
                     QuickSettingValueRow(title: "View Distance", defaultValue: "10", text: $viewDistance, keyboardType: .numberPad)
+                        .normalizedSeparator()
                     QuickSettingValueRow(title: "Simulation Distance", defaultValue: "10", text: $simulationDistance, keyboardType: .numberPad)
+                        .normalizedSeparator()
                     QuickSettingValueRow(title: "Spawn Protection", defaultValue: "16", text: $spawnProtection, keyboardType: .numberPad)
+                        .normalizedSeparator()
                     Toggle("Whitelist", isOn: $whitelist)
+                        .normalizedSeparator()
                     QuickSettingValueRow(title: "MOTD", defaultValue: "A Minecraft Server", text: $motd, keyboardType: .default, fieldWidth: 200)
+                        .normalizedSeparator()
                     QuickSettingValueRow(title: "World Seed", defaultValue: "Random", text: $seed, keyboardType: .default, fieldWidth: 200)
+                        .normalizedSeparator()
                 }
 
                 Section {
@@ -240,23 +257,43 @@ struct CreateServerView: View {
             .navigationTitle("Server Setup")
             .navigationBarTitleDisplayMode(.inline)
 
-            Button(action: createServer) {
-                HStack(spacing: 10) {
-                    if isCreating {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+            VStack(spacing: 12) {
+                Button(action: createServer) {
+                    HStack(spacing: 10) {
+                        if isCreating {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        }
+                        Text(isCreating ? "Working..." : "Create Server")
+                            .font(.system(size: 17, weight: .semibold))
                     }
-                    Text(isCreating ? (createStatus.isEmpty ? "Working..." : createStatus) : "Create Server")
-                        .font(.system(size: 17, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
+                .disabled(isCreating)
+                .foregroundColor(.white)
+                .background(Color.green)
+                .cornerRadius(14)
+                .shadow(color: Color.black.opacity(0.5), radius: 8, x: 0, y: 4)
+
+                if isCreating, let p = createProgress {
+                    VStack(spacing: 0) {
+                        if p > 0 {
+                            ProgressView(value: p)
+                                .progressViewStyle(LinearProgressViewStyle(tint: .green))
+                        } else {
+                            ProgressView()
+                                .progressViewStyle(LinearProgressViewStyle(tint: .green))
+                        }
+
+                        Text(createStatus.isEmpty ? "Working..." : createStatus)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .padding(.top, 8)
+                            .padding(.bottom, 2)
+                    }
+                }
             }
-            .disabled(isCreating)
-            .foregroundColor(.white)
-            .background(Color.green)
-            .cornerRadius(14)
-            .shadow(color: Color.black.opacity(0.5), radius: 8, x: 0, y: 4)
             .padding(.horizontal, 16)
             .padding(.bottom, 24)
         }
@@ -284,8 +321,16 @@ struct CreateServerView: View {
                 }
             }
         )
-        .onAppear { ensureBaseDirectories() }
+        .onAppear {
+            ensureBaseDirectories()
+            if software != .customJar {
+                fetchVersions(force: false)
+            }
+        }
         .onChange(of: software) { newValue in
+            versionFetchGeneration += 1
+            loadingVersions = false
+
             if newValue == .customJar {
                 mcVersion = ""
                 availableVersions = []
@@ -301,6 +346,10 @@ struct CreateServerView: View {
             }
 
             previousSoftware = newValue
+
+            if newValue != .customJar {
+                fetchVersions(force: true)
+            }
         }
         .sheet(isPresented: $showingJarImporter) {
             DocumentPicker(contentTypes: [.data], onPick: { url in
@@ -754,13 +803,26 @@ struct CreateServerView: View {
         if loadingVersions { return }
         if !force, !availableVersions.isEmpty { completion?(); return }
 
+        versionFetchGeneration += 1
+        let generation = versionFetchGeneration
+
         loadingVersions = true
 
         func finishOnMain(_ versions: [String], _ err: String?) {
             DispatchQueue.main.async {
                 self.loadingVersions = false
+                guard self.versionFetchGeneration == generation else {
+                    completion?()
+                    return
+                }
+
                 if let err = err { self.versionFetchError = err }
-                if !versions.isEmpty { self.availableVersions = versions }
+                if !versions.isEmpty {
+                    self.availableVersions = versions
+                    if self.mcVersion.isEmpty {
+                        self.mcVersion = versions[0]
+                    }
+                }
                 completion?()
             }
         }
@@ -1009,7 +1071,17 @@ struct CreateServerView: View {
         var name = serverName.trimmingCharacters(in: .whitespacesAndNewlines)
         if name.isEmpty { name = "Server" }
 
-        if mcVersion.isEmpty && software != .customJar { return }
+        if mcVersion.isEmpty && software != .customJar {
+            if loadingVersions { return }
+            fetchVersions(force: true) {
+                if !self.mcVersion.isEmpty {
+                    self.createServerConfirmed()
+                } else if self.versionFetchError == nil {
+                    self.versionFetchError = "Please select a Minecraft version."
+                }
+            }
+            return
+        }
         if software == .customJar && customJarURL == nil { return }
 
         let root = serversRoot()
@@ -1066,6 +1138,8 @@ struct CreateServerView: View {
 
         isCreating = true
         createStatus = "Preparing..."
+        createProgress = nil
+        createProgressObservation = nil
 
         let serverDirURL = URL(fileURLWithPath: dir, isDirectory: true)
         let selectedVersion = mcVersion
@@ -1092,6 +1166,8 @@ struct CreateServerView: View {
     private func finishCreate(success: Bool) {
         isCreating = false
         createStatus = ""
+        createProgress = nil
+        createProgressObservation = nil
         if success {
             NotificationCenter.default.post(name: Notification.Name("JessiServersChanged"), object: nil)
             presentation.wrappedValue.dismiss()
@@ -1194,6 +1270,11 @@ struct CreateServerView: View {
 
     private func downloadFile(_ url: URL, to dest: URL, completion: @escaping (Result<Void, Error>) -> Void) {
         let task = URLSession.shared.downloadTask(with: url) { tmpURL, _, error in
+            DispatchQueue.main.async {
+                self.createProgress = nil
+                self.createProgressObservation = nil
+            }
+
             if let error = error {
                 completion(.failure(error))
                 return
@@ -1210,6 +1291,15 @@ struct CreateServerView: View {
                 completion(.success(()))
             } catch {
                 completion(.failure(error))
+            }
+        }
+
+        DispatchQueue.main.async {
+            self.createProgress = 0
+            self.createProgressObservation = task.progress.observe(\.fractionCompleted, options: [.new]) { p, _ in
+                DispatchQueue.main.async {
+                    self.createProgress = p.fractionCompleted
+                }
             }
         }
         task.resume()

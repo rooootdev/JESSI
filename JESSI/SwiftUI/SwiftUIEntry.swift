@@ -15,12 +15,24 @@ struct SheetItem: Identifiable {
         guard !didConfigureListAppearance else { return }
         didConfigureListAppearance = true
 
-        let insets = UIEdgeInsets(top: 0, left: 16, bottom: 0, right: 16)
-        UITableView.appearance().separatorInset = insets
-        UITableView.appearance().layoutMargins = insets
-        UITableView.appearance().separatorInsetReference = .fromCellEdges
-        UITableViewCell.appearance().separatorInset = insets
-        UITableViewCell.appearance().layoutMargins = insets
+        if #available(iOS 16.0, *) {
+            let insets = UIEdgeInsets(top: 0, left: 16, bottom: 0, right: 16)
+            UITableView.appearance().separatorInset = insets
+            UITableView.appearance().layoutMargins = insets
+            UITableView.appearance().separatorInsetReference = .fromCellEdges
+            UITableViewCell.appearance().separatorInset = insets
+            UITableViewCell.appearance().layoutMargins = insets
+        } else {
+            let insets = UIEdgeInsets(top: 0, left: 20, bottom: 0, right: 20)
+            UITableView.appearance().separatorInset = insets
+            UITableView.appearance().layoutMargins = insets
+            UITableView.appearance().separatorInsetReference = .fromCellEdges
+            UITableView.appearance().cellLayoutMarginsFollowReadableWidth = false
+
+            UITableViewCell.appearance().separatorInset = insets
+            UITableViewCell.appearance().layoutMargins = insets
+            UITableViewCell.appearance().preservesSuperviewLayoutMargins = false
+        }
     }
 
     @objc public static func makeRootTabViewController() -> UIViewController {
@@ -240,6 +252,7 @@ struct ServerManagerView: View {
                                 Label("Delete", systemImage: "trash")
                             }
                         }
+                        .normalizedSeparator()
                     }
                     .onDelete { indexSet in
                         guard let idx = indexSet.first, idx < model.folders.count else { return }
