@@ -10,16 +10,10 @@
 		B1C0F700A1B2C3D4E5F60032 /* CreateServerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F60005 /* CreateServerView.swift */; };
 		B1C0F700A1B2C3D4E5F60033 /* DoneToolbarTextField.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F60006 /* DoneToolbarTextField.swift */; };
 		B1C0F700A1B2C3D4E5F60034 /* FileBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F60007 /* FileBrowserView.swift */; };
-		B1C0F700A1B2C3D4E5F60049 /* DeviceNames.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F60025 /* DeviceNames.swift */; };
-		B1C0F700A1B2C3D4E5F60045 /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F60021 /* Logger.swift */; };
-		B1C0F700A1B2C3D4E5F60044 /* ModsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F60020 /* ModsView.swift */; };
-		B1C0F700A1B2C3D4E5F60046 /* RemoteImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F60022 /* RemoteImage.swift */; };
-		B1C0F700A1B2C3D4E5F60047 /* TunnelingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F60023 /* TunnelingView.swift */; };
 		B1C0F700A1B2C3D4E5F60035 /* JessiJITCheck.m in Sources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F60009 /* JessiJITCheck.m */; };
 		B1C0F700A1B2C3D4E5F60036 /* LaunchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F6000A /* LaunchView.swift */; };
 		B1C0F700A1B2C3D4E5F60037 /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F6000B /* RootTabView.swift */; };
 		B1C0F700A1B2C3D4E5F60038 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F6000C /* SettingsView.swift */; };
-		B1C0F700A1B2C3D4E5F60051 /* ServerProperties.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F60050 /* ServerProperties.swift */; };
 		B1C0F700A1B2C3D4E5F60039 /* SwiftUIEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F6000D /* SwiftUIEntry.swift */; };
 		B1C0F700A1B2C3D4E5F6003A /* JessiAppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F60011 /* JessiAppDelegate.m */; };
 		B1C0F700A1B2C3D4E5F6003B /* JessiJavaRunner.m in Sources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F60012 /* JessiJavaRunner.m */; };
@@ -31,9 +25,15 @@
 		B1C0F700A1B2C3D4E5F60041 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F60001 /* Assets.xcassets */; };
 		B1C0F700A1B2C3D4E5F60042 /* mach_excServer.c in Sources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F6001C /* mach_excServer.c */; };
 		B1C0F700A1B2C3D4E5F60043 /* mach_excUser.c in Sources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F6001E /* mach_excUser.c */; };
+		B1C0F700A1B2C3D4E5F60044 /* ModsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F60020 /* ModsView.swift */; };
+		B1C0F700A1B2C3D4E5F60045 /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F60021 /* Logger.swift */; };
+		B1C0F700A1B2C3D4E5F60046 /* RemoteImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F60022 /* RemoteImage.swift */; };
+		B1C0F700A1B2C3D4E5F60047 /* TunnelingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F60023 /* TunnelingView.swift */; };
+		B1C0F700A1B2C3D4E5F60048 /* UniversalJIT26Extension.js in Resources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F60024 /* UniversalJIT26Extension.js */; };
+		B1C0F700A1B2C3D4E5F60049 /* DeviceNames.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F60025 /* DeviceNames.swift */; };
+		B1C0F700A1B2C3D4E5F60051 /* ServerProperties.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F60050 /* ServerProperties.swift */; };
 		B1C0F700A1B2C3D4E5F60110 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = B1C0F700A1B2C3D4E5F60100 /* ZIPFoundation */; };
 		B1C0F700A1B2C3D4E5F60111 /* SWCompression in Frameworks */ = {isa = PBXBuildFile; productRef = B1C0F700A1B2C3D4E5F60101 /* SWCompression */; };
-		B1C0F700A1B2C3D4E5F60048 /* UniversalJIT26Extension.js in Resources */ = {isa = PBXBuildFile; fileRef = B1C0F700A1B2C3D4E5F60024 /* UniversalJIT26Extension.js */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -43,17 +43,11 @@
 		B1C0F700A1B2C3D4E5F60005 /* CreateServerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateServerView.swift; sourceTree = "<group>"; };
 		B1C0F700A1B2C3D4E5F60006 /* DoneToolbarTextField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoneToolbarTextField.swift; sourceTree = "<group>"; };
 		B1C0F700A1B2C3D4E5F60007 /* FileBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserView.swift; sourceTree = "<group>"; };
-		B1C0F700A1B2C3D4E5F60025 /* DeviceNames.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceNames.swift; sourceTree = "<group>"; };
-		B1C0F700A1B2C3D4E5F60020 /* ModsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModsView.swift; sourceTree = "<group>"; };
-		B1C0F700A1B2C3D4E5F60021 /* Logger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logger.swift; sourceTree = "<group>"; };
-		B1C0F700A1B2C3D4E5F60022 /* RemoteImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteImage.swift; sourceTree = "<group>"; };
-		B1C0F700A1B2C3D4E5F60023 /* TunnelingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelingView.swift; sourceTree = "<group>"; };
 		B1C0F700A1B2C3D4E5F60008 /* JessiJITCheck.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = JessiJITCheck.h; sourceTree = "<group>"; };
 		B1C0F700A1B2C3D4E5F60009 /* JessiJITCheck.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = JessiJITCheck.m; sourceTree = "<group>"; };
-		B1C0F700A1B2C3D4E5F6000A /* LaunchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchView.swift; sourceTree = "<group>"; }; 
+		B1C0F700A1B2C3D4E5F6000A /* LaunchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchView.swift; sourceTree = "<group>"; };
 		B1C0F700A1B2C3D4E5F6000B /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabView.swift; sourceTree = "<group>"; };
 		B1C0F700A1B2C3D4E5F6000C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		B1C0F700A1B2C3D4E5F60050 /* ServerProperties.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerProperties.swift; sourceTree = "<group>"; };
 		B1C0F700A1B2C3D4E5F6000D /* SwiftUIEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftUIEntry.swift; sourceTree = "<group>"; };
 		B1C0F700A1B2C3D4E5F60010 /* JessiAppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = JessiAppDelegate.h; sourceTree = "<group>"; };
 		B1C0F700A1B2C3D4E5F60011 /* JessiAppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = JessiAppDelegate.m; sourceTree = "<group>"; };
@@ -71,7 +65,13 @@
 		B1C0F700A1B2C3D4E5F6001D /* mach_excServer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = mach_excServer.h; sourceTree = "<group>"; };
 		B1C0F700A1B2C3D4E5F6001E /* mach_excUser.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = mach_excUser.c; sourceTree = "<group>"; };
 		B1C0F700A1B2C3D4E5F6001F /* mach_excUser.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = mach_excUser.h; sourceTree = "<group>"; };
+		B1C0F700A1B2C3D4E5F60020 /* ModsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModsView.swift; sourceTree = "<group>"; };
+		B1C0F700A1B2C3D4E5F60021 /* Logger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logger.swift; sourceTree = "<group>"; };
+		B1C0F700A1B2C3D4E5F60022 /* RemoteImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteImage.swift; sourceTree = "<group>"; };
+		B1C0F700A1B2C3D4E5F60023 /* TunnelingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelingView.swift; sourceTree = "<group>"; };
 		B1C0F700A1B2C3D4E5F60024 /* UniversalJIT26Extension.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = UniversalJIT26Extension.js; sourceTree = "<group>"; };
+		B1C0F700A1B2C3D4E5F60025 /* DeviceNames.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceNames.swift; sourceTree = "<group>"; };
+		B1C0F700A1B2C3D4E5F60050 /* ServerProperties.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerProperties.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -233,8 +233,8 @@
 			mainGroup = A6C524862F2873DF0030EE41;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				B1C0F700A1B2C3D4E5F60120 /* XCLocalSwiftPackageReference "ZIPFoundation" */,
-				B1C0F700A1B2C3D4E5F60121 /* XCLocalSwiftPackageReference "SWCompression" */,
+				B1C0F700A1B2C3D4E5F60120 /* XCLocalSwiftPackageReference "Vendor/ZIPFoundation" */,
+				B1C0F700A1B2C3D4E5F60121 /* XCLocalSwiftPackageReference "Vendor/SWCompression" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A6C524902F2873DF0030EE41 /* Products */;
@@ -295,8 +295,8 @@
 		A6C524982F2873E10030EE41 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				APP_GROUP_ID = "";
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				APP_GROUP_ID = "";
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -359,8 +359,8 @@
 		A6C524992F2873E10030EE41 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				APP_GROUP_ID = "";
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				APP_GROUP_ID = "";
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -422,7 +422,7 @@
 				CODE_SIGN_ENTITLEMENTS = Config/JESSI.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = Q99T4XZBJT;
+				DEVELOPMENT_TEAM = DN4S6CXFWY;
 				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_PREVIEWS = NO;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -464,7 +464,7 @@
 				CODE_SIGN_ENTITLEMENTS = Config/JESSI.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = Q99T4XZBJT;
+				DEVELOPMENT_TEAM = DN4S6CXFWY;
 				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_PREVIEWS = NO;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -520,15 +520,12 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-/* End XCRemoteSwiftPackageReference section */
-
 /* Begin XCLocalSwiftPackageReference section */
-		B1C0F700A1B2C3D4E5F60120 /* XCLocalSwiftPackageReference "ZIPFoundation" */ = {
+		B1C0F700A1B2C3D4E5F60120 /* XCLocalSwiftPackageReference "Vendor/ZIPFoundation" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Vendor/ZIPFoundation;
 		};
-		B1C0F700A1B2C3D4E5F60121 /* XCLocalSwiftPackageReference "SWCompression" */ = {
+		B1C0F700A1B2C3D4E5F60121 /* XCLocalSwiftPackageReference "Vendor/SWCompression" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Vendor/SWCompression;
 		};
@@ -537,12 +534,12 @@
 /* Begin XCSwiftPackageProductDependency section */
 		B1C0F700A1B2C3D4E5F60100 /* ZIPFoundation */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = B1C0F700A1B2C3D4E5F60120 /* XCLocalSwiftPackageReference "ZIPFoundation" */;
+			package = B1C0F700A1B2C3D4E5F60120 /* XCLocalSwiftPackageReference "Vendor/ZIPFoundation" */;
 			productName = ZIPFoundation;
 		};
 		B1C0F700A1B2C3D4E5F60101 /* SWCompression */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = B1C0F700A1B2C3D4E5F60121 /* XCLocalSwiftPackageReference "SWCompression" */;
+			package = B1C0F700A1B2C3D4E5F60121 /* XCLocalSwiftPackageReference "Vendor/SWCompression" */;
 			productName = SWCompression;
 		};
 /* End XCSwiftPackageProductDependency section */

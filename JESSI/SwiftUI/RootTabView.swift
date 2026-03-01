@@ -82,7 +82,7 @@ struct RootTabView: View {
         .accentColor(.green)
         .environmentObject(tourManager)
         .onAppear {
-            keepalivemgr.shared.startIfEnabled()
+            keepalivemgr.shared.startifenabled()
             TunnelingModel.autoInstallPlayitIfNeeded()
         }
 	}
