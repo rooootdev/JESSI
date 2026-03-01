@@ -1584,7 +1584,7 @@ struct SettingsView: View {
                 Text("keep alive")
             } footer: {
                 if keepalivemethod == .location {
-                    Text("Requires 'Always' [Location permission.](app-settings:). Your location data will not be collected.")
+                    Text("Requires 'Always' [Location permission.](app-settings:) Your location data will not be collected.")
                 }
                 if keepalivemethod == .audio {
                     Text("Plays silent audio while the app is closed to keep it alive.")
