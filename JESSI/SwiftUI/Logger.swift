@@ -1,6 +1,7 @@
 //
 //  Logger.swift
 //  mowiwewgewawt
+//  bacon why would you do that
 //
 //  Created by roooot on 15.11.25.
 //

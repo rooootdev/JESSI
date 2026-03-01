@@ -2,6 +2,8 @@ import SwiftUI
 import Combine
 import UIKit
 import Darwin
+import CoreLocation
+import AVFoundation
 import ZIPFoundation
 import SWCompression
 
@@ -14,6 +16,217 @@ extension View {
         } else {
             self
         }
+    }
+}
+
+final class keepalivemgr: NSObject, CLLocationManagerDelegate {
+    enum keepalivemethod: String, CaseIterable {
+        case location
+        case audio
+    }
+
+    static let shared = keepalivemgr()
+    static let enabledkey = "jessi.keepalive.background"
+    static let methodkey = "jessi.keepalive.method"
+    static let authchangednotif = Notification.Name("jessi.keepalive.authorization.changed")
+
+    private let locationmgr = CLLocationManager()
+    private var audioplayer: AVAudioPlayer?
+    private(set) var isrunning = false
+    var authstat: CLAuthorizationStatus { currentauthstat() }
+    var appgroupid = Bundle.main.object(forInfoDictionaryKey: "APP_GROUP_ID") as? String
+    var bundle = Bundle.main.bundleIdentifier
+
+    private override init() {
+        super.init()
+        locationmgr.delegate = self
+        locationmgr.distanceFilter = CLLocationDistanceMax
+        locationmgr.pausesLocationUpdatesAutomatically = false
+        locationmgr.allowsBackgroundLocationUpdates = true
+        if #available(iOS 14.0, *) {
+            locationmgr.desiredAccuracy = kCLLocationAccuracyReduced
+        } else {
+            locationmgr.desiredAccuracy = kCLLocationAccuracyThreeKilometers
+        }
+    }
+
+    func startifenabled() {
+        if UserDefaults.standard.bool(forKey: Self.enabledkey) {
+            start()
+        } else {
+            stop()
+        }
+    }
+
+    func setenabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: Self.enabledkey)
+        if enabled {
+            start()
+        } else {
+            stop()
+        }
+    }
+
+    var method: keepalivemethod {
+        keepalivemethod(rawValue: UserDefaults.standard.string(forKey: Self.methodkey) ?? "") ?? .location
+    }
+
+    func setmethod(raw: String) {
+        let resolved = keepalivemethod(rawValue: raw) ?? .location
+        UserDefaults.standard.set(resolved.rawValue, forKey: Self.methodkey)
+        if UserDefaults.standard.bool(forKey: Self.enabledkey) {
+            start()
+        } else {
+            stop()
+        }
+    }
+
+    func requestalwaysauth() {
+        locationmgr.requestAlwaysAuthorization()
+    }
+
+    private func start() {
+        stop()
+
+        switch method {
+        case .location:
+            let status = currentauthstat()
+            switch status {
+            case .notDetermined, .authorizedWhenInUse:
+                locationmgr.requestAlwaysAuthorization()
+            case .authorizedAlways:
+                locationmgr.startUpdatingLocation()
+                isrunning = true
+            default:
+                stop()
+            }
+        case .audio:
+            isrunning = keepaliveaudio()
+        }
+    }
+
+    private func stop() {
+        locationmgr.stopUpdatingLocation()
+        stopkeepaliveaudio()
+        isrunning = false
+    }
+
+    private func currentauthstat() -> CLAuthorizationStatus {
+        if #available(iOS 14.0, *) {
+            return locationmgr.authorizationStatus
+        } else {
+            return type(of: locationmgr).authorizationStatus()
+        }
+    }
+
+    private func handleauthchange(_ status: CLAuthorizationStatus) {
+        NotificationCenter.default.post(name: Self.authchangednotif, object: nil)
+
+        guard method == .location else {
+            if UserDefaults.standard.bool(forKey: Self.enabledkey) {
+                start()
+            }
+            return
+        }
+
+        switch status {
+        case .authorizedAlways:
+            startifenabled()
+        case .denied, .restricted, .authorizedWhenInUse:
+            stop()
+        case .notDetermined:
+            break
+        @unknown default:
+            break
+        }
+    }
+
+    func getteam() -> String? {
+        guard let cstr = jessi_team_identifier() else { return nil }
+        defer { free(UnsafeMutableRawPointer(mutating: cstr)) }
+        let value = String(cString: cstr)
+        return value.isEmpty ? nil : value
+    }
+
+    @available(iOS 14.0, *)
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        handleauthchange(manager.authorizationStatus)
+    }
+
+    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
+        handleauthchange(status)
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        if let clErr = error as? CLError, clErr.code == .denied {
+            stop()
+        }
+    }
+
+    private func keepaliveaudio() -> Bool {
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            try session.setActive(true)
+        } catch {
+            return false
+        }
+
+        if audioplayer == nil {
+            audioplayer = try? AVAudioPlayer(data: Self.makesilentwav())
+            audioplayer?.numberOfLoops = -1
+            audioplayer?.volume = 0.0
+            audioplayer?.prepareToPlay()
+        }
+        if audioplayer?.isPlaying != true {
+            _ = audioplayer?.play()
+        }
+        return audioplayer?.isPlaying == true
+    }
+
+    private func stopkeepaliveaudio() {
+        audioplayer?.stop()
+    }
+
+    private static func makesilentwav(samplerate: UInt32 = 8000, channels: UInt16 = 1, seconds: UInt32 = 1) -> Data {
+        let bitspersample: UInt16 = 16
+        let bytespersample = UInt32(bitspersample / 8)
+        let framecount = samplerate * seconds
+        let datasize = framecount * UInt32(channels) * bytespersample
+        let byterate = samplerate * UInt32(channels) * bytespersample
+        let blockalign = channels * UInt16(bytespersample)
+        let chunksize = 36 + datasize
+
+        var data = Data()
+        data.append("RIFF".data(using: .ascii)!)
+        data.append(UInt32(chunksize).littleendiandata)
+        data.append("WAVE".data(using: .ascii)!)
+        data.append("fmt ".data(using: .ascii)!)
+        data.append(UInt32(16).littleendiandata)
+        data.append(UInt16(1).littleendiandata)
+        data.append(UInt16(channels).littleendiandata)
+        data.append(UInt32(samplerate).littleendiandata)
+        data.append(UInt32(byterate).littleendiandata)
+        data.append(UInt16(blockalign).littleendiandata)
+        data.append(UInt16(bitspersample).littleendiandata)
+        data.append("data".data(using: .ascii)!)
+        data.append(UInt32(datasize).littleendiandata)
+        data.append(Data(count: Int(datasize)))
+        return data
+    }
+}
+
+private extension UInt16 {
+    var littleendiandata: Data {
+        var value = self.littleEndian
+        return Data(bytes: &value, count: MemoryLayout<UInt16>.size)
+    }
+}
+
+private extension UInt32 {
+    var littleendiandata: Data {
+        var value = self.littleEndian
+        return Data(bytes: &value, count: MemoryLayout<UInt32>.size)
     }
 }
 
@@ -75,6 +288,7 @@ final class SettingsModel: ObservableObject {
     @Published var isIOS26: Bool = false
     @Published var iOSVersionString: String = ""
     @Published var isTrollStore: Bool = false
+    @Published var islivecontainer: Bool = false
 
     @Published var installedJVMVersions: Set<String> = []
 
@@ -123,6 +337,7 @@ final class SettingsModel: ObservableObject {
         runInBackground = s.runInBackground
         isIOS26 = jessi_is_ios26_or_later()
         isTrollStore = jessi_is_trollstore_installed()
+        islivecontainer = jessi_is_livecontainer_installed()
 
         refreshInstalledJVMVersions()
     }
@@ -167,6 +382,7 @@ final class SettingsModel: ObservableObject {
     }
 
     func refreshSystemStats() {
+        isJITEnabled = isJITEnabledCheck()
         freeRAM = formatRAM(getAvailableMemoryEstimate())
     }
 
@@ -589,6 +805,10 @@ final class SettingsModel: ObservableObject {
 struct SettingsView: View {
     @EnvironmentObject var tourManager: TourManager
     @StateObject private var model = SettingsModel()
+    @AppStorage(keepalivemgr.enabledkey) private var keepalive: Bool = false
+    @AppStorage(keepalivemgr.methodkey) private var keepalivemethodraw: String = keepalivemgr.keepalivemethod.location.rawValue
+    @State private var keepaliveauthstat: CLAuthorizationStatus = keepalivemgr.shared.authstat
+    @State private var showkeepalivepermprompt = false
 
     @State private var showInstallDropdown: Bool = false
     @AppStorage("jessi.jvm.install.inProgress") private var installInProgress: Bool = false
@@ -605,6 +825,18 @@ struct SettingsView: View {
 
     private func refreshLocalIP() {
         localIP = bestLocalIPAddress() ?? "Unavailable"
+    }
+
+    private var alwaysshowpermsbtn: Bool {
+        keepalivemethod == .location && keepaliveauthstat == .authorizedWhenInUse
+    }
+
+    private var keepalivemethod: keepalivemgr.keepalivemethod {
+        keepalivemgr.keepalivemethod(rawValue: keepalivemethodraw) ?? .location
+    }
+
+    private func refreshkeepaliveauthstat() {
+        keepaliveauthstat = keepalivemgr.shared.authstat
     }
 
     private func fetchPublicIPIfNeeded(force: Bool = false) {
@@ -872,6 +1104,38 @@ struct SettingsView: View {
 
             ConnectionSectionView()
 
+            Section {
+                Picker("Keep Alive Method", selection: Binding(
+                    get: { keepalivemethodraw },
+                    set: { newValue in
+                        keepalivemethodraw = newValue
+                        keepalivemgr.shared.setmethod(raw: newValue)
+                        refreshkeepaliveauthstat()
+                    }
+                )) {
+                    Text("Location").tag(keepalivemgr.keepalivemethod.location.rawValue)
+                    Text("Audio").tag(keepalivemgr.keepalivemethod.audio.rawValue)
+                }
+                .pickerStyle(SegmentedPickerStyle())
+                .normalizedSeparator()
+                
+                Toggle("Keep Alive in Background", isOn: Binding(
+                    get: { keepalive },
+                    set: { newvalue in
+                        keepalive = newvalue
+                        keepalivemgr.shared.setenabled(newvalue)
+                        refreshkeepaliveauthstat()
+                    }
+                ))
+                .normalizedSeparator()
+            } header: {
+                Text("keepalive")
+            } footer: {
+                if keepalivemethod == .location {
+                    Text("Requires 'Always' [Location permission.](app-settings:)")
+                }
+            }
+
             Section(header: Text("Miscellaneous"), footer: Text(model.heapDescription)) {
                 if model.isTrollStore {
                     Toggle("Run in Background", isOn: $model.runInBackground)
@@ -934,6 +1198,12 @@ struct SettingsView: View {
                             UIApplication.shared.open(url)
                         }
                     }
+                }
+                .normalizedSeparator()
+                HStack {
+                    Text("LiveContainer Detected")
+                    Spacer()
+                    Text(model.islivecontainer ? "Yes" : "No")
                 }
                 .normalizedSeparator()
                 HStack {
@@ -1014,6 +1284,9 @@ struct SettingsView: View {
                     }
                     .padding(.vertical, 16)
                     .padding(.horizontal, 16)
+                    .onTapGesture {
+                        UIApplication.shared.open(URL(string: "https://github.com/baconium")!, options: [:], completionHandler: nil)
+                    }
 
                     Rectangle()
                         .fill(Color(UIColor.separator))
@@ -1039,6 +1312,9 @@ struct SettingsView: View {
                     }
                     .padding(.vertical, 16)
                     .padding(.horizontal, 16)
+                    .onTapGesture {
+                        UIApplication.shared.open(URL(string: "https://github.com/rooootdev")!, options: [:], completionHandler: nil)
+                    }
                 }
                 .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
             } header: {
@@ -1056,6 +1332,12 @@ struct SettingsView: View {
                 dismissButton: .default(Text("OK"))
             )
         }
+        .onReceive(NotificationCenter.default.publisher(for: keepalivemgr.authchangednotif)) { _ in
+            refreshkeepaliveauthstat()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            refreshkeepaliveauthstat()
+        }
         
         .onAppear {
             let s = JessiSettings.shared()
@@ -1069,6 +1351,8 @@ struct SettingsView: View {
 
             model.refreshAvailableJavaVersions()
             model.refreshInstalledJVMVersions()
+            keepalivemgr.shared.startifenabled()
+            refreshkeepaliveauthstat()
 
             setInstallSelection(installSelection.subtracting(model.installedJVMVersions))
 

@@ -1,3 +1,5 @@
+// skid me once, shame on you; skid me twice, shame on me
+
 #import <Foundation/Foundation.h>
 #import <dlfcn.h>
 #import <stdio.h>
@@ -236,9 +238,6 @@ static BOOL jessi_is_ios18_or_earlier_core(void) {
 }
 
 static BOOL jessi_has_extended_va_entitlement(void) {
-    
-    
-
     pid_t pid = getpid();
     size_t cap = 4096;
     void *buf = NULL;
@@ -477,7 +476,6 @@ static BOOL jessi_magic_is_macho(uint32_t magicLE) {
 
 static void jessi_preflight_jvm_dylibs_if_needed(NSString *javaHome) {
     if (!javaHome.length) return;
-    if (!jessi_is_ios26_or_later_core()) return;
     if ([javaHome rangeOfString:@"/Library/Application Support/"].location == NSNotFound) return;
     if (!jessi_dyld_bypass_ready) {
         JESSI_TXM_LOG("[JESSI] Skipping preflight dlopen: dyld bypass not ready\n");
@@ -521,6 +519,8 @@ static void jessi_preflight_jvm_dylibs_if_needed(NSString *javaHome) {
 static mach_port_t jessi_exc_port = MACH_PORT_NULL;
 static volatile uint64_t jessi_hw_redirect_orig[6] = {0};
 static volatile uint64_t jessi_hw_redirect_target[6] = {0};
+static volatile uint64_t jessi_hw_redirect_hit_count = 0;
+static volatile uint64_t jessi_hw_redirect_miss_count = 0;
 
 static void *jessi_exc_server_thread(void *unused) {
     (void)unused;
@@ -675,10 +675,12 @@ kern_return_t catch_mach_exception_raise_state(mach_port_t exception_port,
     for (int i = 0; i < 6 && jessi_hw_redirect_orig[i]; i++) {
         if (pc == (uint64_t)jessi_hw_redirect_orig[i]) {
             JESSI_TXM_LOG("[JESSI] Redirecting breakpoint %d to %p\n", i, (void *)jessi_hw_redirect_target[i]);
+            jessi_hw_redirect_hit_count++;
             arm_thread_state64_set_pc_fptr(*newTS, (void *)jessi_hw_redirect_target[i]);
             return KERN_SUCCESS;
         }
     }
+    jessi_hw_redirect_miss_count++;
     JESSI_TXM_LOG("[JESSI] Breakpoint PC did not match registered targets\n");
     return KERN_FAILURE;
 }
@@ -729,7 +731,6 @@ static void *jessi_dyld_base(void) {
 static bool jessi_write_abs_branch_stub(void *patchAddr, void *target) {
     if (!patchAddr || !target) return false;
 
-    
     vm_address_t page = (vm_address_t)patchAddr & ~((vm_address_t)getpagesize() - 1);
     kern_return_t kr = vm_protect(mach_task_self(), page, (vm_size_t)getpagesize(), false,
                                  VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY);
@@ -841,25 +842,13 @@ static void* jessi_hooked_mmap(void *addr, size_t len, int prot, int flags, int 
                     JESSI_TXM_LOG("[JESSI] hooked_mmap TXM prepare done\n");
                 }
             }
-
-            vm_address_t mirrored = 0;
-            vm_prot_t curProt = 0, maxProt = 0;
-            kern_return_t ret = vm_remap(mach_task_self(), &mirrored, (vm_size_t)len, 0, VM_FLAGS_ANYWHERE,
-                                         mach_task_self(), (vm_address_t)map, false, &curProt, &maxProt, VM_INHERIT_SHARE);
-            if (s_mmap_calls <= 20 || (s_mmap_calls % 100 == 0)) {
-                JESSI_TXM_LOG("[JESSI] hooked_mmap vm_remap ret=%d mirrored=%p\n", ret, (void *)mirrored);
-            }
-            if (ret != KERN_SUCCESS) {
-                JESSI_TXM_LOG("[JESSI] hooked_mmap ERROR: vm_remap failed ret=%d (fd=%d off=%lld len=%zu)\n", ret, fd, (long long)offset, len);
-                munmap(map, len);
-                errno = EPERM;
-                return MAP_FAILED;
-            }
-
-            kern_return_t protRet = vm_protect(mach_task_self(), mirrored, (vm_size_t)len, NO, VM_PROT_READ | VM_PROT_WRITE);
+            uintptr_t pageSize = (uintptr_t)getpagesize();
+            vm_address_t mapPage = (vm_address_t)((uintptr_t)map & ~(pageSize - 1));
+            uintptr_t mapEnd = ((uintptr_t)map + len + pageSize - 1) & ~(pageSize - 1);
+            vm_size_t mapSize = (vm_size_t)(mapEnd - (uintptr_t)mapPage);
+            kern_return_t protRet = vm_protect(mach_task_self(), mapPage, mapSize, NO, VM_PROT_READ | VM_PROT_WRITE);
             if (protRet != KERN_SUCCESS) {
-                JESSI_TXM_LOG("[JESSI] hooked_mmap ERROR: vm_protect(mirrored,RW) failed ret=%d (curProt=0x%x maxProt=0x%x)\n", protRet, curProt, maxProt);
-                vm_deallocate(mach_task_self(), mirrored, (vm_size_t)len);
+                JESSI_TXM_LOG("[JESSI] hooked_mmap ERROR: vm_protect(map,RW) failed ret=%d (map=%p len=%zu)\n", protRet, map, len);
                 munmap(map, len);
                 errno = EPERM;
                 return MAP_FAILED;
@@ -868,11 +857,11 @@ static void* jessi_hooked_mmap(void *addr, size_t len, int prot, int flags, int 
             BOOL copied = NO;
             void *fileMap = __mmap(NULL, len, PROT_READ, MAP_PRIVATE, fd, offset);
             if (fileMap != MAP_FAILED) {
-                memcpy((void *)mirrored, fileMap, len);
+                memcpy(map, fileMap, len);
                 munmap(fileMap, len);
                 copied = YES;
             } else {
-                uint8_t *dst = (uint8_t *)mirrored;
+                uint8_t *dst = (uint8_t *)map;
                 size_t total = 0;
                 while (total < len) {
                     ssize_t n = pread(fd, dst + total, len - total, offset + (off_t)total);
@@ -890,12 +879,16 @@ static void* jessi_hooked_mmap(void *addr, size_t len, int prot, int flags, int 
                 }
             }
 
-            vm_deallocate(mach_task_self(), mirrored, (vm_size_t)len);
-
             if (!copied) {
                 munmap(map, len);
                 errno = EPERM;
                 return MAP_FAILED;
+            }
+
+            kern_return_t restoreRet = vm_protect(mach_task_self(), mapPage, mapSize, NO, (vm_prot_t)prot);
+            if (restoreRet != KERN_SUCCESS) {
+                JESSI_TXM_LOG("[JESSI] hooked_mmap WARNING: vm_protect(map,orig=0x%x) failed ret=%d; trying RX\n", prot, restoreRet);
+                (void)vm_protect(mach_task_self(), mapPage, mapSize, NO, VM_PROT_READ | VM_PROT_EXECUTE);
             }
 
             if (offset == 0 && len >= sizeof(uint32_t)) {
@@ -952,52 +945,37 @@ static int jessi_hooked_fcntl(int fildes, int cmd, void *param) {
 }
 
 static void jessi_init_dyld_validation_bypass_if_needed(void) {
-    static BOOL didInit = NO;
-    if (didInit) return;
-    didInit = YES;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
 
-    BOOL ios26OrLater = jessi_is_ios26_or_later_core();
-    BOOL ios18OrEarlier = jessi_is_ios18_or_earlier_core();
-    JESSI_TXM_LOG("[JESSI] Dyld bypass init (ios26=%d ios18OrEarlier=%d)\n", ios26OrLater ? 1 : 0, ios18OrEarlier ? 1 : 0);
-    if (!ios18OrEarlier && !ios26OrLater) {
-        return;
-    }
-
-    if (!jessi_check_jit_enabled() && !ios26OrLater) {
-        JESSI_TXM_LOG("[JESSI] Dyld bypass skipped (JIT not enabled)\n");
-        return;
-    }
-
-    void *dyld = jessi_dyld_base();
-    if (!dyld) {
-        JESSI_TXM_LOG("[JESSI] Dyld bypass failed (no dyld base)\n");
-        return;
-    }
-
-    uint8_t *base = (uint8_t *)dyld;
-    uint8_t *mmapSite = jessi_find_signature(base, jessi_dyld_mmap_sig, sizeof(jessi_dyld_mmap_sig));
-    uint8_t *fcntlSite = jessi_find_signature(base, jessi_dyld_fcntl_sig, sizeof(jessi_dyld_fcntl_sig));
-    JESSI_TXM_LOG("[JESSI] dyld base=%p mmapSig=%p fcntlSig=%p\n", base, mmapSite, fcntlSite);
-
-    if (ios18OrEarlier) {
-        
-        signal(SIGBUS, SIG_IGN);
-
-        bool ok1 = false, ok2 = false;
-        if (mmapSite) {
-            ok1 = jessi_write_abs_branch_stub(mmapSite, (void *)jessi_hooked_mmap);
-            JESSI_TXM_LOG("[JESSI] Dyld bypass mmap %s at %p\n", ok1 ? "hooked" : "failed", mmapSite);
+        BOOL ios26OrLater = jessi_is_ios26_or_later_core();
+        BOOL ios18OrEarlier = jessi_is_ios18_or_earlier_core();
+        JESSI_TXM_LOG("[JESSI] Dyld bypass init (ios26=%d ios18OrEarlier=%d)\n", ios26OrLater ? 1 : 0, ios18OrEarlier ? 1 : 0);
+        if (!ios18OrEarlier && !ios26OrLater) {
+            return;
         }
-        if (fcntlSite) {
-            ok2 = jessi_write_abs_branch_stub(fcntlSite, (void *)jessi_hooked_fcntl);
-            JESSI_TXM_LOG("[JESSI] Dyld bypass fcntl %s at %p\n", ok2 ? "hooked" : "failed", fcntlSite);
+
+        if (!jessi_check_jit_enabled() && !ios26OrLater) {
+            JESSI_TXM_LOG("[JESSI] Dyld bypass skipped (JIT not enabled)\n");
+            return;
         }
-        if (!(ok1 || ok2)) {
-            JESSI_TXM_LOG("[JESSI] Dyld bypass did not hook any targets\n");
+
+        void *dyld = jessi_dyld_base();
+        if (!dyld) {
+            JESSI_TXM_LOG("[JESSI] Dyld bypass failed (no dyld base)\n");
+            return;
         }
-        jessi_dyld_bypass_ready = (ok1 || ok2) ? YES : NO;
-        return;
-    }
+
+        uint8_t *base = (uint8_t *)dyld;
+        uint8_t *mmapSite = jessi_find_signature(base, jessi_dyld_mmap_sig, sizeof(jessi_dyld_mmap_sig));
+        uint8_t *fcntlSite = jessi_find_signature(base, jessi_dyld_fcntl_sig, sizeof(jessi_dyld_fcntl_sig));
+        JESSI_TXM_LOG("[JESSI] dyld base=%p mmapSig=%p fcntlSig=%p\n", base, mmapSite, fcntlSite);
+
+        if (ios18OrEarlier) {
+            jessi_dyld_bypass_ready = jessi_setup_hw_breakpoint_bypass(mmapSite, fcntlSite);
+            JESSI_TXM_LOG("[JESSI] iOS 18 or earlier: HW dyld bypass ready=%d\n", jessi_dyld_bypass_ready ? 1 : 0);
+            return;
+        }
 
     if (ios26OrLater) {
         BOOL txmSupport = [JessiSettings shared].txmSupport;
@@ -1028,9 +1006,6 @@ static void jessi_init_dyld_validation_bypass_if_needed(void) {
 
             jessi_jit26_set_detach_after_first_br(NO);
             JESSI_TXM_LOG("[JESSI] Set debugger to stay attached\n");
-
-            task_set_exception_ports(mach_task_self(), EXC_MASK_BAD_ACCESS, 0, EXCEPTION_DEFAULT, MACHINE_THREAD_STATE);
-
             JESSI_TXM_LOG("[JESSI] iOS 26 TXM: starting mirrored dyld patching\n");
 
             signal(SIGBUS, SIG_IGN);
@@ -1057,8 +1032,9 @@ static void jessi_init_dyld_validation_bypass_if_needed(void) {
         }
 
         JESSI_TXM_LOG("[JESSI] iOS 26 non-TXM device: using HW breakpoints\n");
-        jessi_dyld_bypass_ready = jessi_setup_hw_breakpoint_bypass(mmapSite, fcntlSite);
-    }
+            jessi_dyld_bypass_ready = jessi_setup_hw_breakpoint_bypass(mmapSite, fcntlSite);
+        }
+    });
 }
 
 typedef struct {
@@ -1073,6 +1049,32 @@ typedef struct {
     const char *launchername;
     jint result;
 } JessiJliLaunchCtx;
+
+static char **jessi_dup_argv(const char *const *argv, int argc) {
+    if (!argv || argc < 0) return NULL;
+    char **out = (char **)calloc((size_t)argc + 1, sizeof(char *));
+    if (!out) return NULL;
+
+    for (int i = 0; i < argc; i++) {
+        const char *src = argv[i] ? argv[i] : "";
+        out[i] = strdup(src);
+        if (!out[i]) {
+            for (int j = 0; j < i; j++) free(out[j]);
+            free(out);
+            return NULL;
+        }
+    }
+    out[argc] = NULL;
+    return out;
+}
+
+static void jessi_free_argv(char **argv, int argc) {
+    if (!argv || argc < 0) return;
+    for (int i = 0; i < argc; i++) {
+        free(argv[i]);
+    }
+    free(argv);
+}
 
 static void *jessi_jli_launch_trampoline(void *ctx) {
     JessiJliLaunchCtx *c = (JessiJliLaunchCtx *)ctx;
@@ -1089,6 +1091,107 @@ static void *jessi_jli_launch_trampoline(void *ctx) {
                       JNI_FALSE,
                       JNI_TRUE);
     return NULL;
+}
+
+static BOOL jessi_ensure_executable_pointer(const void *ptr) {
+    if (!ptr) return NO;
+
+    vm_address_t page = (vm_address_t)ptr & ~((vm_address_t)getpagesize() - 1);
+    vm_address_t regionAddr = (vm_address_t)page;
+    vm_size_t regionSize = 0;
+    vm_region_basic_info_data_64_t info;
+    mach_msg_type_number_t infoCount = VM_REGION_BASIC_INFO_COUNT_64;
+    mach_port_t objectName = MACH_PORT_NULL;
+
+    kern_return_t kr = vm_region_64(mach_task_self(),
+                                    &regionAddr,
+                                    &regionSize,
+                                    VM_REGION_BASIC_INFO_64,
+                                    (vm_region_info_t)&info,
+                                    &infoCount,
+                                    &objectName);
+    if (kr != KERN_SUCCESS) {
+        JESSI_TXM_LOG("[JESSI] vm_region_64 failed for fn=%p ret=%d\n", ptr, kr);
+        return NO;
+    }
+    if (objectName != MACH_PORT_NULL) {
+        mach_port_deallocate(mach_task_self(), objectName);
+    }
+
+    if (info.protection & VM_PROT_EXECUTE) {
+        return YES;
+    }
+
+    JESSI_TXM_LOG("[JESSI] fn=%p not executable (prot=0x%x max=0x%x), attempting vm_protect RX\n",
+                  ptr, info.protection, info.max_protection);
+    kr = vm_protect(mach_task_self(), page, (vm_size_t)getpagesize(), false, VM_PROT_READ | VM_PROT_EXECUTE);
+    if (kr != KERN_SUCCESS) {
+        JESSI_TXM_LOG("[JESSI] vm_protect RX failed for fn=%p ret=%d\n", ptr, kr);
+        return NO;
+    }
+    return YES;
+}
+
+static void jessi_debug_dump_launch_state(NSString *mode,
+                                          NSString *javaHome,
+                                          NSString *libjliPath,
+                                          const void *fnPtr) {
+    Dl_info dli = {0};
+    int dlok = dladdr(fnPtr, &dli);
+
+    vm_address_t page = (vm_address_t)fnPtr & ~((vm_address_t)getpagesize() - 1);
+    vm_address_t regionAddr = page;
+    vm_size_t regionSize = 0;
+    vm_region_basic_info_data_64_t info;
+    mach_msg_type_number_t infoCount = VM_REGION_BASIC_INFO_COUNT_64;
+    mach_port_t objectName = MACH_PORT_NULL;
+    kern_return_t kr = vm_region_64(mach_task_self(),
+                                    &regionAddr,
+                                    &regionSize,
+                                    VM_REGION_BASIC_INFO_64,
+                                    (vm_region_info_t)&info,
+                                    &infoCount,
+                                    &objectName);
+    if (objectName != MACH_PORT_NULL) {
+        mach_port_deallocate(mach_task_self(), objectName);
+    }
+
+    BOOL isLiveContainer = jessi_is_livecontainer_installed();
+    BOOL jitEnabled = jessi_check_jit_enabled();
+
+    if (kr == KERN_SUCCESS) {
+        NSLog(@"uhh have fun with the debug");
+        NSLog(@"[JESSI] [launchprobe] mode=%@ livecontainer=%d jit=%d dyldBypassReady=%d javaHome=%@ libjli=%@ fn=%p page=0x%llx regionStart=0x%llx regionSize=0x%llx prot=0x%x maxProt=0x%x dlok=%d dli_fname=%s dli_sname=%s",
+              mode ?: @"(null)",
+              isLiveContainer ? 1 : 0,
+              jitEnabled ? 1 : 0,
+              jessi_dyld_bypass_ready ? 1 : 0,
+              javaHome ?: @"(null)",
+              libjliPath ?: @"(null)",
+              fnPtr,
+              (unsigned long long)page,
+              (unsigned long long)regionAddr,
+              (unsigned long long)regionSize,
+              info.protection,
+              info.max_protection,
+              dlok,
+              dlok && dli.dli_fname ? dli.dli_fname : "(null)",
+              dlok && dli.dli_sname ? dli.dli_sname : "(null)");
+    } else {
+        NSLog(@"[JESSI] [launchprobe] mode=%@ livecontainer=%d jit=%d dyldBypassReady=%d javaHome=%@ libjli=%@ fn=%p page=0x%llx vm_region_64_err=%d dlok=%d dli_fname=%s dli_sname=%s",
+              mode ?: @"(null)",
+              isLiveContainer ? 1 : 0,
+              jitEnabled ? 1 : 0,
+              jessi_dyld_bypass_ready ? 1 : 0,
+              javaHome ?: @"(null)",
+              libjliPath ?: @"(null)",
+              fnPtr,
+              (unsigned long long)page,
+              kr,
+              dlok,
+              dlok && dli.dli_fname ? dli.dli_fname : "(null)",
+              dlok && dli.dli_sname ? dli.dli_sname : "(null)");
+    }
 }
 
 static NSArray<NSString *> *jessi_filter_extra_jvm_args(NSArray<NSString *> *args, BOOL ios26OrLater, BOOL isJava17Plus) {
@@ -1272,7 +1375,17 @@ int jessi_server_main(int argc, char *argv[]) {
             }
 
             JessiDlopenCtx dlCtx = { .path = libjliPath.fileSystemRepresentation, .flags = RTLD_GLOBAL | RTLD_NOW };
+            uint64_t hwHitsBefore = jessi_hw_redirect_hit_count;
+            uint64_t hwMissBefore = jessi_hw_redirect_miss_count;
             void *libjli = jessi_run_with_hw_breakpoints(jessi_dlopen_trampoline, &dlCtx);
+            uint64_t hwHitsAfter = jessi_hw_redirect_hit_count;
+            uint64_t hwMissAfter = jessi_hw_redirect_miss_count;
+            NSLog(@"[JESSI] [HWBypass] stage=dlopen-libjli mode=server hits_delta=%llu misses_delta=%llu hits_total=%llu misses_total=%llu dyldBypassReady=%d",
+                  (unsigned long long)(hwHitsAfter - hwHitsBefore),
+                  (unsigned long long)(hwMissAfter - hwMissBefore),
+                  (unsigned long long)hwHitsAfter,
+                  (unsigned long long)hwMissAfter,
+                  jessi_dyld_bypass_ready ? 1 : 0);
             if (!libjli) {
                 const char *err = dlerror();
                 fprintf(stderr, "Error: dlopen(libjli) failed: %s\n", err ? err : "unknown");
@@ -1287,6 +1400,11 @@ int jessi_server_main(int argc, char *argv[]) {
                 fprintf(stderr, "Error: dlsym(JLI_Launch) failed: %s\n", err ? err : "unknown");
                 return 5;
             }
+            if (!jessi_ensure_executable_pointer((const void *)JLI_Launch)) {
+                fprintf(stderr, "Error: JLI_Launch pointer is not executable\n");
+                return 9;
+            }
+            jessi_debug_dump_launch_state(@"server", javaHome, libjliPath, (const void *)JLI_Launch);
             JESSI_TXM_LOG("[JESSI] JLI_Launch resolved at %p\n", (void *)JLI_Launch);
 
             NSString *javaPath = [javaHome stringByAppendingPathComponent:@"bin/java"]; 
@@ -1414,6 +1532,11 @@ int jessi_server_main(int argc, char *argv[]) {
             jargv[idx++] = NULL;
 
             int jargc = idx - 1;
+            char **ownedJargv = jessi_dup_argv(jargv, jargc);
+            if (!ownedJargv) {
+                fprintf(stderr, "Error: failed to allocate JVM argument vector\n");
+                return 8;
+            }
 
             
             signal(SIGSEGV, SIG_DFL);
@@ -1430,7 +1553,7 @@ int jessi_server_main(int argc, char *argv[]) {
             JessiJliLaunchCtx launchCtx = {
                 .fn = JLI_Launch,
                 .jargc = jargc,
-                .jargv = (const char **)jargv,
+                .jargv = (const char **)ownedJargv,
                 .jfullversion = fullver,
                 .jdotversion = dotver,
                 .progname = "java",
@@ -1440,6 +1563,7 @@ int jessi_server_main(int argc, char *argv[]) {
             JESSI_TXM_LOG("[JESSI] Invoking JLI_Launch (server)\n");
             (void)jessi_run_with_hw_breakpoints(jessi_jli_launch_trampoline, &launchCtx);
             JESSI_TXM_LOG("[JESSI] JLI_Launch returned %d\n", (int)launchCtx.result);
+            jessi_free_argv(ownedJargv, jargc);
             int exitCode = (int)launchCtx.result;
             return exitCode;
         }
@@ -1553,7 +1677,17 @@ int jessi_tool_main(int argc, char *argv[]) {
             JESSI_TXM_LOG("[JESSI] Loading libjli (tool) from %s\n", libjliPath.fileSystemRepresentation);
 
             JessiDlopenCtx dlCtx = { .path = libjliPath.fileSystemRepresentation, .flags = RTLD_GLOBAL | RTLD_NOW };
+            uint64_t hwHitsBefore = jessi_hw_redirect_hit_count;
+            uint64_t hwMissBefore = jessi_hw_redirect_miss_count;
             void *libjli = jessi_run_with_hw_breakpoints(jessi_dlopen_trampoline, &dlCtx);
+            uint64_t hwHitsAfter = jessi_hw_redirect_hit_count;
+            uint64_t hwMissAfter = jessi_hw_redirect_miss_count;
+            NSLog(@"[JESSI][HWBypass] stage=dlopen-libjli mode=tool hits_delta=%llu misses_delta=%llu hits_total=%llu misses_total=%llu dyldBypassReady=%d",
+                  (unsigned long long)(hwHitsAfter - hwHitsBefore),
+                  (unsigned long long)(hwMissAfter - hwMissBefore),
+                  (unsigned long long)hwHitsAfter,
+                  (unsigned long long)hwMissAfter,
+                  jessi_dyld_bypass_ready ? 1 : 0);
             if (!libjli) {
                 const char *err = dlerror();
                 fprintf(stderr, "Error: dlopen(libjli) failed: %s\n", err ? err : "unknown");
@@ -1566,6 +1700,11 @@ int jessi_tool_main(int argc, char *argv[]) {
                 fprintf(stderr, "Error: dlsym(JLI_Launch) failed: %s\n", err ? err : "unknown");
                 return 5;
             }
+            if (!jessi_ensure_executable_pointer((const void *)JLI_Launch)) {
+                fprintf(stderr, "Error: JLI_Launch pointer is not executable\n");
+                return 9;
+            }
+            jessi_debug_dump_launch_state(@"tool", javaHome, libjliPath, (const void *)JLI_Launch);
             JESSI_TXM_LOG("[JESSI] JLI_Launch (tool) resolved at %p\n", (void *)JLI_Launch);
 
             NSString *javaPath = [javaHome stringByAppendingPathComponent:@"bin/java"]; 
@@ -1623,6 +1762,11 @@ int jessi_tool_main(int argc, char *argv[]) {
             jargv[idx++] = NULL;
 
             int jargc = idx - 1;
+            char **ownedJargv = jessi_dup_argv(jargv, jargc);
+            if (!ownedJargv) {
+                fprintf(stderr, "Error: failed to allocate JVM argument vector\n");
+                return 8;
+            }
 
             const char *fullver = "1.8.0-internal";
             const char *dotver = "1.8";
@@ -1632,7 +1776,7 @@ int jessi_tool_main(int argc, char *argv[]) {
             JessiJliLaunchCtx launchCtx = {
                 .fn = JLI_Launch,
                 .jargc = jargc,
-                .jargv = (const char **)jargv,
+                .jargv = (const char **)ownedJargv,
                 .jfullversion = fullver,
                 .jdotversion = dotver,
                 .progname = "java",
@@ -1642,6 +1786,7 @@ int jessi_tool_main(int argc, char *argv[]) {
             JESSI_TXM_LOG("[JESSI] Invoking JLI_Launch (tool)\n");
             (void)jessi_run_with_hw_breakpoints(jessi_jli_launch_trampoline, &launchCtx);
             JESSI_TXM_LOG("[JESSI] JLI_Launch (tool) returned %d\n", (int)launchCtx.result);
+            jessi_free_argv(ownedJargv, jargc);
             int exitCode = (int)launchCtx.result;
             return exitCode;
         }
