@@ -55,6 +55,10 @@ struct CreateServerView: View {
 
     @State private var showForgeWarning: Bool = false
     @State private var pendingCreateServer: Bool = false
+    @State private var showSeedEasterEgg: Bool = false
+    @State private var seedEasterEggTitle: String = ""
+    @State private var seedEasterEggMessage: String = ""
+    @State private var lastTriggeredSeedKey: String? = nil
 
     @Environment(\.presentationMode) private var presentation
 
@@ -311,6 +315,9 @@ struct CreateServerView: View {
                 UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
             }
         }
+        .onChange(of: seed) { newSeed in
+            maybeShowSeedEasterEgg(for: newSeed)
+        }
         .onPreferenceChange(FramePreferenceKey.self) { frames in
             if let f = frames["software"] { self.softwareAnchorFrame = f }
             if let f = frames["version"] { self.versionAnchorFrame = f }
@@ -407,6 +414,48 @@ struct CreateServerView: View {
                 })
             )
         }
+        .alert(isPresented: $showSeedEasterEgg) {
+            Alert(
+                title: Text(seedEasterEggTitle),
+                message: Text(seedEasterEggMessage),
+                dismissButton: .default(Text("Dismiss"))
+            )
+        }
+    }
+
+    private static let seedEasterEggs: [String: (title: String, message: String)] = [
+        "i love jessi": (title: "Jadix is mad", message: "Thats Jadix's girlfriend! Don't you dare try to steal her!"),
+        "lunginspectorfartporn": (title: "Baconium Activated", message: "Congratulations on your free sideloading certificate! Password accepted!"),
+        "ult1m4t3 h4xx0r": (title: "WARNING", message: "USERLAND PAC BYPASS INITIATED. EXPLOITING KERNEL..."),
+        "fe(r)": (title: "[REDACTED]", message: "stay away from FE(R) that shit gets gay"),
+        "important tester": (title: "Thank you!", message: "shout out to newkid and jojo125 from the discord, txm was a pain in the ass to get working"),
+        "fuck ice": (title: "Fuck politics", message: "Politics will not be tolerated inside of JESSI, just play minecraft man"),
+        "fuck trump": (title: "Fuck politics", message: "Politics will not be tolerated inside of JESSI, just play minecraft man"),
+        "fuck kamala": (title: "Fuck politics", message: "Politics will not be tolerated inside of JESSI, just play minecraft man"),
+        "fuck biden": (title: "Fuck politics", message: "Politics will not be tolerated inside of JESSI, just play minecraft man"),
+        "i love abby": (title: "I love you", message: "I hope you're doing well my love")
+    ]
+
+    private func maybeShowSeedEasterEgg(for newSeed: String) {
+        let key = newSeed.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !key.isEmpty else {
+            lastTriggeredSeedKey = nil
+            return
+        }
+
+        guard let egg = Self.seedEasterEggs[key] else {
+            if lastTriggeredSeedKey == key {
+                lastTriggeredSeedKey = nil
+            }
+            return
+        }
+
+        guard key != lastTriggeredSeedKey else { return }
+
+        seedEasterEggTitle = egg.title
+        seedEasterEggMessage = egg.message
+        showSeedEasterEgg = true
+        lastTriggeredSeedKey = key
     }
 
     private func importCustomJar(from pickedURL: URL) {

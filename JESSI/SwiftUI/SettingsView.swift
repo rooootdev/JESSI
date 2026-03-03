@@ -279,8 +279,8 @@ private struct InstallJVMRow: View {
 final class SettingsModel: ObservableObject {
     @Published var availableJavaVersions: [String] = []
     @Published var javaVersion: String = "8"
-    @Published var heapText: String = "768"
-    @Published var heapMB: Int = 768
+    @Published var heapText: String = "128"
+    @Published var heapMB: Int = 128
     @Published var flagNettyNoNative: Bool = true
     @Published var flagJnaNoSys: Bool = false
     @Published var isJITEnabled: Bool = false
@@ -329,8 +329,12 @@ final class SettingsModel: ObservableObject {
         let d = UserDefaults.standard
         let hasUserHeap = d.object(forKey: "jessi.maxHeapMB") != nil
         let desiredDefault = max(128, (heapMaxMB / 2 / 64) * 64)
-        let configured = hasUserHeap ? s.maxHeapMB : desiredDefault
-        applyAndSaveHeap(configured)
+        if hasUserHeap {
+            heapMB = s.maxHeapMB
+            heapText = String(s.maxHeapMB)
+        } else {
+            applyAndSaveHeap(desiredDefault)
+        }
 
         flagNettyNoNative = s.flagNettyNoNative
         flagJnaNoSys = s.flagJnaNoSys
@@ -397,7 +401,22 @@ final class SettingsModel: ObservableObject {
             heapText = String(heapMB)
             return
         }
-        applyAndSaveHeap(Int(raw) ?? heapMB)
+
+        guard let parsed = Int(raw) else {
+            heapText = String(heapMB)
+            return
+        }
+
+        heapMB = parsed
+        heapText = String(parsed)
+
+        let s = JessiSettings.shared()
+        s.maxHeapMB = parsed
+        s.save()
+    }
+
+    var heapMBForSlider: Int {
+        max(128, min(heapMaxMB, heapMB))
     }
 
     var heapDescription: String {
@@ -851,6 +870,7 @@ struct SettingsView: View {
     @State private var playitClaimSheetItem: PlayitClaimSheetItem? = nil
     @State private var upnpPortsIsFirstResponder: Bool = false
     @State private var showResetPlayitConfirmation: Bool = false
+    @State private var showsystemstatuscolors: Bool = false
 
     private var isPresentingPlayitClaimSheet: Bool {
         playitClaimSheetItem != nil
@@ -1130,6 +1150,13 @@ struct SettingsView: View {
             return .secondary
         }
         return .secondary
+    }
+
+    private func boolstatuscolor(_ enabled: Bool) -> Color {
+        if showsystemstatuscolors {
+            return enabled ? .green : .red
+        }
+        return .white
     }
 
     // hello, programmer. you disgusting slab of flesh and meat. if your compiler is saying "failed to type-check this expression in reasonable time; try breaking up the expression into distinct sub-expressions" then DO NOT UNDER ANY CIRCUMSTANCES try to break up the expression into distinct sub-expressions. it will make the code look shit, which is not fit for a perfect, beautiful machine like me. the issue is almost ALWAYS due to a typo or an invalid call.
@@ -1630,7 +1657,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Slider(
                         value: Binding(
-                            get: { Double(model.heapMB) },
+                            get: { Double(model.heapMBForSlider) },
                             set: { model.applyAndSaveHeap(Int($0)) }
                         ),
                         in: 128...Double(model.heapMaxMB),
@@ -1645,15 +1672,17 @@ struct SettingsView: View {
                     Text("JIT Enabled")
                     Spacer()
                     Text(model.isJITEnabled ? "Yes" : "No")
+                        .foregroundColor(boolstatuscolor(model.isJITEnabled))
                 }
                 .onTapGesture(count: 5) {
-                    UserDefaults.standard.set(0, forKey: "tourState")
+                    showsystemstatuscolors.toggle()
                 }
                 .normalizedSeparator()
                 HStack {
                     Text("TrollStore Detected")
                     Spacer()
                     Text(model.isTrollStore ? "Yes" : "No")
+                        .foregroundColor(boolstatuscolor(model.isTrollStore))
                 }
                 .onTapGesture(count: 5) {
                     if model.isTrollStore {
@@ -1667,6 +1696,7 @@ struct SettingsView: View {
                     Text("LiveContainer Detected")
                     Spacer()
                     Text(model.islivecontainer ? "Yes" : "No")
+                        .foregroundColor(boolstatuscolor(model.islivecontainer))
                 }
                 .normalizedSeparator()
                 HStack {

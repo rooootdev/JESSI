@@ -8,6 +8,7 @@ enum LaunchAlert: Identifiable {
     case stopConfirm
     case jitNotEnabled
     case runtime(String)
+    case mspj(String)
 
     var id: String {
         switch self {
@@ -19,6 +20,8 @@ enum LaunchAlert: Identifiable {
             return "jitNotEnabled"
         case .runtime(let message):
             return "runtime:\(message)"
+        case .mspj(let message):
+            return "mspj:\(message)"
         }
     }
 }
@@ -120,6 +123,12 @@ final class LaunchModel: NSObject, ObservableObject {
     }
 
     func start() {
+
+        let heapMB = JessiSettings.shared().maxHeapMB
+        if heapMB == 51925 {
+            activeAlert = .mspj("oh fuck! please dont bypass MSPJ!!!")
+        }
+
         guard !selectedServer.isEmpty else { return }
 
         let available = JessiSettings.availableJavaVersions()
@@ -620,6 +629,12 @@ struct LaunchView: View {
         .navigationBarTitleDisplayMode(.inline)
         .alert(item: $model.activeAlert) { alert in
             switch alert {
+            case .mspj(let message):
+                return Alert(
+                    title: Text("Homosexuality Detected"),
+                    message: Text(message),
+                    dismissButton: .default(Text("Bootloop Device"))
+                )
             case .noServer:
                 return Alert(
                     title: Text("No server selected"),
