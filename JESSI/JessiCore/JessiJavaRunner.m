@@ -842,13 +842,24 @@ static void* jessi_hooked_mmap(void *addr, size_t len, int prot, int flags, int 
                     JESSI_TXM_LOG("[JESSI] hooked_mmap TXM prepare done\n");
                 }
             }
-            uintptr_t pageSize = (uintptr_t)getpagesize();
-            vm_address_t mapPage = (vm_address_t)((uintptr_t)map & ~(pageSize - 1));
-            uintptr_t mapEnd = ((uintptr_t)map + len + pageSize - 1) & ~(pageSize - 1);
-            vm_size_t mapSize = (vm_size_t)(mapEnd - (uintptr_t)mapPage);
-            kern_return_t protRet = vm_protect(mach_task_self(), mapPage, mapSize, NO, VM_PROT_READ | VM_PROT_WRITE);
+            vm_address_t mirrored = 0;
+            vm_prot_t curProt = 0, maxProt = 0;
+            kern_return_t ret = vm_remap(mach_task_self(), &mirrored, (vm_size_t)len, 0, VM_FLAGS_ANYWHERE,
+                                         mach_task_self(), (vm_address_t)map, false, &curProt, &maxProt, VM_INHERIT_SHARE);
+            if (s_mmap_calls <= 20 || (s_mmap_calls % 100 == 0)) {
+                JESSI_TXM_LOG("[JESSI] hooked_mmap vm_remap ret=%d mirrored=%p\n", ret, (void *)mirrored);
+            }
+            if (ret != KERN_SUCCESS) {
+                JESSI_TXM_LOG("[JESSI] hooked_mmap ERROR: vm_remap failed ret=%d (fd=%d off=%lld len=%zu)\n", ret, fd, (long long)offset, len);
+                munmap(map, len);
+                errno = EPERM;
+                return MAP_FAILED;
+            }
+
+            kern_return_t protRet = vm_protect(mach_task_self(), mirrored, (vm_size_t)len, NO, VM_PROT_READ | VM_PROT_WRITE);
             if (protRet != KERN_SUCCESS) {
-                JESSI_TXM_LOG("[JESSI] hooked_mmap ERROR: vm_protect(map,RW) failed ret=%d (map=%p len=%zu)\n", protRet, map, len);
+                JESSI_TXM_LOG("[JESSI] hooked_mmap ERROR: vm_protect(mirrored,RW) failed ret=%d (curProt=0x%x maxProt=0x%x)\n", protRet, curProt, maxProt);
+                vm_deallocate(mach_task_self(), mirrored, (vm_size_t)len);
                 munmap(map, len);
                 errno = EPERM;
                 return MAP_FAILED;
@@ -857,11 +868,11 @@ static void* jessi_hooked_mmap(void *addr, size_t len, int prot, int flags, int 
             BOOL copied = NO;
             void *fileMap = __mmap(NULL, len, PROT_READ, MAP_PRIVATE, fd, offset);
             if (fileMap != MAP_FAILED) {
-                memcpy(map, fileMap, len);
+                memcpy((void *)mirrored, fileMap, len);
                 munmap(fileMap, len);
                 copied = YES;
             } else {
-                uint8_t *dst = (uint8_t *)map;
+                uint8_t *dst = (uint8_t *)mirrored;
                 size_t total = 0;
                 while (total < len) {
                     ssize_t n = pread(fd, dst + total, len - total, offset + (off_t)total);
@@ -879,16 +890,12 @@ static void* jessi_hooked_mmap(void *addr, size_t len, int prot, int flags, int 
                 }
             }
 
+            vm_deallocate(mach_task_self(), mirrored, (vm_size_t)len);
+
             if (!copied) {
                 munmap(map, len);
                 errno = EPERM;
                 return MAP_FAILED;
-            }
-
-            kern_return_t restoreRet = vm_protect(mach_task_self(), mapPage, mapSize, NO, (vm_prot_t)prot);
-            if (restoreRet != KERN_SUCCESS) {
-                JESSI_TXM_LOG("[JESSI] hooked_mmap WARNING: vm_protect(map,orig=0x%x) failed ret=%d; trying RX\n", prot, restoreRet);
-                (void)vm_protect(mach_task_self(), mapPage, mapSize, NO, VM_PROT_READ | VM_PROT_EXECUTE);
             }
 
             if (offset == 0 && len >= sizeof(uint32_t)) {
@@ -1006,6 +1013,9 @@ static void jessi_init_dyld_validation_bypass_if_needed(void) {
 
             jessi_jit26_set_detach_after_first_br(NO);
             JESSI_TXM_LOG("[JESSI] Set debugger to stay attached\n");
+
+            task_set_exception_ports(mach_task_self(), EXC_MASK_BAD_ACCESS, 0, EXCEPTION_DEFAULT, MACHINE_THREAD_STATE);
+
             JESSI_TXM_LOG("[JESSI] iOS 26 TXM: starting mirrored dyld patching\n");
 
             signal(SIGBUS, SIG_IGN);
