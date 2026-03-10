@@ -289,6 +289,7 @@ final class SettingsModel: ObservableObject {
     @Published var launchArgs: String = ""
     @Published var curseForgeAPIKey: String = ""
     @Published var runInBackground: Bool = false
+    @Published var disableSeparateJVMProcessOnTrollStore: Bool = false
     @Published var isIOS26: Bool = false
     @Published var iOSVersionString: String = ""
     @Published var isTrollStore: Bool = false
@@ -347,6 +348,7 @@ final class SettingsModel: ObservableObject {
         launchArgs = s.launchArguments
         curseForgeAPIKey = s.curseForgeAPIKey
         runInBackground = s.runInBackground
+        disableSeparateJVMProcessOnTrollStore = s.disableSeparateJVMProcessOnTrollStore
         isIOS26 = jessi_is_ios26_or_later()
         isTrollStore = jessi_is_trollstore_installed()
         islivecontainer = jessi_is_livecontainer_installed()
@@ -390,6 +392,7 @@ final class SettingsModel: ObservableObject {
         s.flagNettyNoNative = flagNettyNoNative
         s.flagJnaNoSys = flagJnaNoSys
         s.runInBackground = runInBackground
+        s.disableSeparateJVMProcessOnTrollStore = disableSeparateJVMProcessOnTrollStore
         s.save()
     }
 
@@ -1776,6 +1779,17 @@ struct SettingsView: View {
                         .frame(maxWidth: 420)
                 }
                 .normalizedSeparator()
+
+                if model.isTrollStore {
+                    Toggle("Disable separate JVM process", isOn: Binding(
+                        get: { model.disableSeparateJVMProcessOnTrollStore },
+                        set: { newValue in
+                            model.disableSeparateJVMProcessOnTrollStore = newValue
+                            model.applyAndSaveFlags()
+                        }
+                    ))
+                    .normalizedSeparator()
+                }
                 
                 HStack(spacing: 12) {
                     Text("Allocated RAM")

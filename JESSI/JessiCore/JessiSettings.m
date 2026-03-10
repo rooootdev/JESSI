@@ -8,6 +8,7 @@ static NSString *const kJessiLaunchArgs = @"jessi.jvm.launchArgs";
 static NSString *const kJessiTXMSupport = @"jessi.txmSupport";
 static NSString *const kJessiCurseForgeAPIKey = @"jessi.mods.curseforgeApiKey";
 static NSString *const kJessiRunInBackground = @"jessi.runInBackground";
+static NSString *const kJessiDisableSeparateJVMProcessOnTrollStore = @"jessi.jvm.disableSeparateProcessOnTrollStore";
 
 @implementation JessiSettings
 
@@ -146,6 +147,12 @@ static NSString *const kJessiRunInBackground = @"jessi.runInBackground";
         self.runInBackground = [d boolForKey:kJessiRunInBackground];
     }
 
+    if ([d objectForKey:kJessiDisableSeparateJVMProcessOnTrollStore] == nil) {
+        self.disableSeparateJVMProcessOnTrollStore = NO;
+    } else {
+        self.disableSeparateJVMProcessOnTrollStore = [d boolForKey:kJessiDisableSeparateJVMProcessOnTrollStore];
+    }
+
     NSString *args = [d stringForKey:kJessiLaunchArgs];
     if (args) self.launchArguments = args; else self.launchArguments = @"";
 
@@ -161,6 +168,7 @@ static NSString *const kJessiRunInBackground = @"jessi.runInBackground";
     [d setBool:self.flagNettyNoNative forKey:kJessiFlagNettyNoNative];
     [d setBool:self.flagJnaNoSys forKey:kJessiFlagJnaNoSys];
     [d setBool:self.runInBackground forKey:kJessiRunInBackground];
+    [d setBool:self.disableSeparateJVMProcessOnTrollStore forKey:kJessiDisableSeparateJVMProcessOnTrollStore];
     [d setObject:self.launchArguments ?: @"" forKey:kJessiLaunchArgs];
     [d setBool:self.txmSupport forKey:kJessiTXMSupport];
     [d setObject:self.curseForgeAPIKey ?: @"" forKey:kJessiCurseForgeAPIKey];
