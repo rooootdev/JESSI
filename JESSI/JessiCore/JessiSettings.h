@@ -12,6 +12,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic) BOOL flagNettyNoNative;
 @property (nonatomic) BOOL flagJnaNoSys;
 @property (nonatomic) BOOL runInBackground;
+@property (nonatomic) BOOL disableSeparateJVMProcessOnTrollStore;
 
 + (instancetype)shared;
 + (NSArray<NSString *> *)availableJavaVersions;

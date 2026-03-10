@@ -530,7 +530,8 @@ struct LaunchView: View {
                         .disabled(model.isRunning)
 
                         Button(action: {
-                            if jessi_is_trollstore_installed() {
+                            let shouldUseSeparateProcess = jessi_is_trollstore_installed() && !JessiSettings.shared().disableSeparateJVMProcessOnTrollStore
+                            if shouldUseSeparateProcess {
                                 model.stop()
                             } else {
                                 model.activeAlert = .stopConfirm
