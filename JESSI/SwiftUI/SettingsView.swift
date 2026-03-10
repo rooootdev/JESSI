@@ -1306,6 +1306,10 @@ struct SettingsView: View {
         }
         return .white
     }
+    
+    private func infostatuscolor() -> Color {
+        return showsystemstatuscolors ? .secondary : .primary
+    }
 
     // hello, programmer. you disgusting slab of flesh and meat. if your compiler is saying "failed to type-check this expression in reasonable time; try breaking up the expression into distinct sub-expressions" then DO NOT UNDER ANY CIRCUMSTANCES try to break up the expression into distinct sub-expressions. it will make the code look shit, which is not fit for a perfect, beautiful machine like me. the issue is almost ALWAYS due to a typo or an invalid call.
     // thank you for your attention to this matter,
@@ -1867,6 +1871,7 @@ struct SettingsView: View {
                     Text("iOS Version")
                     Spacer()
                     Text(model.iOSVersionString)
+                        .foregroundColor(infostatuscolor())
                 }
                 .normalizedSeparator()
                 
@@ -1874,12 +1879,14 @@ struct SettingsView: View {
                     Text("Total RAM")
                     Spacer()
                     Text(model.totalRAM)
+                        .foregroundColor(infostatuscolor())
                 }
                 .normalizedSeparator()
                 HStack {
                     Text("Available RAM (estimated)")
                     Spacer()
                     Text(model.freeRAM)
+                        .foregroundColor(infostatuscolor())
                 }
                 .normalizedSeparator()
                 
@@ -1887,6 +1894,7 @@ struct SettingsView: View {
                     Text("Local IP")
                     Spacer()
                     Text(localIP)
+                        .foregroundColor(infostatuscolor())
                 }
                 .normalizedSeparator()
                 
@@ -1905,12 +1913,16 @@ struct SettingsView: View {
                         
                         if !showPublicIP {
                             Text("Hidden")
+                                .foregroundColor(infostatuscolor())
                         } else if isFetchingPublicIP {
                             Text("Loading...")
+                                .foregroundColor(infostatuscolor())
                         } else if let ip = publicIP {
                             Text(ip)
+                                .foregroundColor(infostatuscolor())
                         } else {
                             Text("Unavailable")
+                                .foregroundColor(infostatuscolor())
                         }
                     }
                     .contentShape(Rectangle())

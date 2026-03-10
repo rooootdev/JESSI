@@ -99,15 +99,21 @@ BOOL jessi_is_trollstore_installed(void) {
 }
 
 BOOL jessi_is_livecontainer_installed(void) {
-    NSString *bundle = [NSBundle mainBundle].bundlePath;
-    if (bundle.length == 0) return NO;
+    NSString *path = [[NSBundle mainBundle].bundlePath stringByResolvingSymlinksInPath];
+    NSFileManager *fm = NSFileManager.defaultManager;
 
-    NSString *resolved = [bundle stringByResolvingSymlinksInPath];
-    NSString *parent = [resolved stringByDeletingLastPathComponent];
-    NSString *grandparent = [parent stringByDeletingLastPathComponent];
+    for (int i = 0; i < 3 && path.length; i++) {
+        path = [path stringByDeletingLastPathComponent];
 
-    NSString *grandparentname = grandparent.lastPathComponent ?: @"";
-    return [grandparentname caseInsensitiveCompare:@"LiveContainer"] == NSOrderedSame;
+        NSLog(@"Dir: %@", path);
+        NSLog(@"Contents: %@", [fm contentsOfDirectoryAtPath:path error:nil]);
+
+        if ([[path lastPathComponent] caseInsensitiveCompare:@"LiveContainer"] == NSOrderedSame) {
+            return YES;
+        }
+    }
+
+    return NO;
 }
 
 const char * _Nullable jessi_team_identifier(void) {
