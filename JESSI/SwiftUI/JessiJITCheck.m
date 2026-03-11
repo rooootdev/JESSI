@@ -7,6 +7,7 @@
 #import <limits.h>
 #import <stdio.h>
 #import <string.h>
+#import <mach-o/dyld.h>
 #if __has_include(<sys/codesign.h>)
 #import <sys/codesign.h>
 #else
@@ -129,43 +130,15 @@ BOOL jessi_is_trollstore_installed(void) {
 }
 
 BOOL jessi_is_livecontainer_installed(void) {
-    NSString *path = [[NSBundle mainBundle].bundlePath stringByResolvingSymlinksInPath];
-    NSFileManager *fm = NSFileManager.defaultManager;
-    NSString *bundleID = NSBundle.mainBundle.bundleIdentifier ?: @"";
-    NSString *appName = bundleID.length ? [bundleID stringByAppendingString:@".app"] : @"";
+    uint32_t imgcount = _dyld_image_count();
 
-    // LiveContainer layout: .../Documents/Applications/<bundleid>.app
-    NSString *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
-    if (docs.length) {
-        NSString *appsDir = [docs stringByAppendingPathComponent:@"Applications"];
-        BOOL isDir = NO;
-        if ([fm fileExistsAtPath:appsDir isDirectory:&isDir] && isDir) {
-            NSArray<NSString *> *apps = [fm contentsOfDirectoryAtPath:appsDir error:nil] ?: @[];
-            NSString *dirLine = [NSString stringWithFormat:@"Dir: %@", appsDir];
-            NSString *contentsLine = [NSString stringWithFormat:@"Contents: %@", apps];
-            NSLog(@"%@", dirLine);
-            NSLog(@"%@", contentsLine);
-            jessi_append_livecontainer_log(dirLine);
-            jessi_append_livecontainer_log(contentsLine);
-
-            if (appName.length && [apps containsObject:appName]) {
-                return YES;
-            }
+    for (uint32_t i = 0; i < imgcount; i++) {
+        const char *imgname = _dyld_get_image_name(i);
+        if (imgname == NULL) {
+            continue;
         }
-    }
 
-    for (int i = 0; i < 3 && path.length; i++) {
-        path = [path stringByDeletingLastPathComponent];
-
-        NSString *dirLine = [NSString stringWithFormat:@"Dir: %@", path];
-        NSString *contentsLine = [NSString stringWithFormat:@"Contents: %@", [fm contentsOfDirectoryAtPath:path error:nil]];
-
-        NSLog(@"%@", dirLine);
-        NSLog(@"%@", contentsLine);
-        jessi_append_livecontainer_log(dirLine);
-        jessi_append_livecontainer_log(contentsLine);
-
-        if ([[path lastPathComponent] caseInsensitiveCompare:@"LiveContainer"] == NSOrderedSame) {
+        if (strstr(imgname, "tweakinjector.dylib") != NULL) {
             return YES;
         }
     }
