@@ -145,7 +145,9 @@ BOOL jessi_is_livecontainer_installed(void) {
         const char *name = _dyld_get_image_name(i);
         if (!name) continue;
 
-        BOOL match = (strcasestr(name, "tweakinjector.dylib") != NULL);
+        BOOL match =
+            (strcasestr(name, "tweakinjector.dylib") != NULL) ||
+            (strcasestr(name, "tweakloader.dylib") != NULL);
 
         [log appendFormat:@"[%u] %s %s\n",
             i,
