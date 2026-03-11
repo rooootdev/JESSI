@@ -130,15 +130,14 @@ BOOL jessi_is_trollstore_installed(void) {
 }
 
 BOOL jessi_is_livecontainer_installed(void) {
-    uint32_t imgcount = _dyld_image_count();
+    uint32_t count = _dyld_image_count();
 
-    for (uint32_t i = 0; i < imgcount; i++) {
-        const char *imgname = _dyld_get_image_name(i);
-        if (imgname == NULL) {
-            continue;
-        }
+    for (uint32_t i = 0; i < count; i++) {
+        const char *name = _dyld_get_image_name(i);
+        if (!name) continue;
 
-        if (strstr(imgname, "tweakinjector.dylib") != NULL) {
+        NSString *image = [NSString stringWithUTF8String:name];
+        if ([image.lowercaseString containsString:@"tweakinjector.dylib"]) {
             return YES;
         }
     }
