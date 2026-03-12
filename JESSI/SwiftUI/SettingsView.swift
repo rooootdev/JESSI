@@ -1006,14 +1006,15 @@ struct SettingsView: View {
     @State private var publicIP: String? = nil
     @State private var publicIPError: String? = nil
     @State private var isFetchingPublicIP: Bool = false
-    @State private var playitClaimSheetItem: PlayitClaimSheetItem? = nil
+    @State private var playitclaimsheetitem: PlayitClaimSheetItem? = nil
     @State private var upnpPortsIsFirstResponder: Bool = false
-    @State private var showResetPlayitConfirmation: Bool = false
+    @State private var showresetplayitconfirmation: Bool = false
     @State private var showsystemstatuscolors: Bool = false
-    @State private var testmirrorase: String = "https://crystall1ne.dev/cdn/amethyst-ios"
+    @State private var showrooootmenu: Bool = false
+    @State private var simulatormirrorbase: String = "https://crystall1ne.dev/cdn/amethyst-ios"
 
     private var isPresentingPlayitClaimSheet: Bool {
-        playitClaimSheetItem != nil
+        playitclaimsheetitem != nil
     }
 
     private var showTunnelingInstallErrorAlert: Binding<Bool> {
@@ -1027,7 +1028,7 @@ struct SettingsView: View {
         )
     }
 
-    private var showPlayitInvalidKeyAlert: Binding<Bool> {
+    private var showplayitinvalidkeyalert: Binding<Bool> {
         Binding(
             get: { !isPresentingPlayitClaimSheet && playitmodel.showinvalidkeyalert },
             set: { newValue in
@@ -1222,13 +1223,20 @@ struct SettingsView: View {
         )
     }
 
-    private func resetPlayitAndRedownload() {
+    private func redownloadplayit() {
         playitmodel.stopifpossible()
         playitmodel.clearcache()
         tunnelingmodel.deleteInstalledService("playit")
         tunnelingmodel.refreshinstalledservices()
         tunnelingmodel.refreshavailableservices()
         startplayitinstall(showErrors: true)
+    }
+
+    private func resetplayit() {
+        playitmodel.stopifpossible()
+        playitmodel.clearcache()
+        tunnelingmodel.refreshinstalledservices()
+        tunnelingmodel.refreshavailableservices()
     }
 
     private func resumetunnelingondemand() {
@@ -1297,6 +1305,10 @@ struct SettingsView: View {
             return enabled ? .green : .red
         }
         return .white
+    }
+    
+    private func infostatuscolor() -> Color {
+        return showsystemstatuscolors ? .secondary : .primary
     }
 
     // hello, programmer. you disgusting slab of flesh and meat. if your compiler is saying "failed to type-check this expression in reasonable time; try breaking up the expression into distinct sub-expressions" then DO NOT UNDER ANY CIRCUMSTANCES try to break up the expression into distinct sub-expressions. it will make the code look shit, which is not fit for a perfect, beautiful machine like me. the issue is almost ALWAYS due to a typo or an invalid call.
@@ -1449,21 +1461,22 @@ struct SettingsView: View {
             } else if !isnoneselected {
                 if playitmodel.islibrarypresent {
                     Button {
+                        guard playitmodel.verifylibraryreachable() else { return }
+
                         if !playitmodel.linked {
-                            playitmodel.beginClaimFlow()
+                            playitmodel.beginclaimflow()
                         }
                         
                         tunnelingmodel.showinstallerror = false
                         playitmodel.showinvalidkeyalert = false
                         model.showinstallerror = false
                         
-                        guard playitClaimSheetItem == nil else { return }
+                        guard playitclaimsheetitem == nil else { return }
                         guard !playitmodel.claimurl.isEmpty,
                               let url = URL(string: playitmodel.claimurl)
                         else { return }
                         
-                        playitClaimSheetItem = PlayitClaimSheetItem(url: url)
-                        
+                        playitclaimsheetitem = PlayitClaimSheetItem(url: url)
                     } label: {
                         HStack {
                             Text(playitmodel.linked ? "Manage Playit" : "Link Playit")
@@ -1474,7 +1487,7 @@ struct SettingsView: View {
                     .normalizedSeparator()
                     
                     Button {
-                        showResetPlayitConfirmation = true
+                        showresetplayitconfirmation = true
                     } label: {
                         HStack {
                             Text("Reset Playit")
@@ -1526,6 +1539,9 @@ struct SettingsView: View {
                     }
                     .buttonStyle(PlainButtonStyle())
                     .normalizedSeparator()
+                    
+                    Text(playitmodel.lasterr ?? "No error (yet)")
+                        .foregroundColor(.secondary)
                 }
             }
         }
@@ -1855,6 +1871,7 @@ struct SettingsView: View {
                     Text("iOS Version")
                     Spacer()
                     Text(model.iOSVersionString)
+                        .foregroundColor(infostatuscolor())
                 }
                 .normalizedSeparator()
                 
@@ -1862,12 +1879,14 @@ struct SettingsView: View {
                     Text("Total RAM")
                     Spacer()
                     Text(model.totalRAM)
+                        .foregroundColor(infostatuscolor())
                 }
                 .normalizedSeparator()
                 HStack {
                     Text("Available RAM (estimated)")
                     Spacer()
                     Text(model.freeRAM)
+                        .foregroundColor(infostatuscolor())
                 }
                 .normalizedSeparator()
                 
@@ -1875,6 +1894,7 @@ struct SettingsView: View {
                     Text("Local IP")
                     Spacer()
                     Text(localIP)
+                        .foregroundColor(infostatuscolor())
                 }
                 .normalizedSeparator()
                 
@@ -1893,12 +1913,16 @@ struct SettingsView: View {
                         
                         if !showPublicIP {
                             Text("Hidden")
+                                .foregroundColor(infostatuscolor())
                         } else if isFetchingPublicIP {
                             Text("Loading...")
+                                .foregroundColor(infostatuscolor())
                         } else if let ip = publicIP {
                             Text(ip)
+                                .foregroundColor(infostatuscolor())
                         } else {
                             Text("Unavailable")
+                                .foregroundColor(infostatuscolor())
                         }
                     }
                     .contentShape(Rectangle())
@@ -1958,7 +1982,7 @@ struct SettingsView: View {
                     .padding(.vertical, 16)
                     .padding(.horizontal, 16)
                     .onTapGesture {
-                        UIApplication.shared.open(URL(string: "https://github.com/rooootdev")!, options: [:], completionHandler: nil)
+                        showrooootmenu = true
                     }
                 }
                 .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
@@ -1968,7 +1992,7 @@ struct SettingsView: View {
             
 #if targetEnvironment(simulator)
             Section {
-                Picker("Mirror", selection: $testmirrorase) {
+                Picker("Mirror", selection: $simulatormirrorbase) {
                     Text("crystall1ne.dev").tag("https://crystall1ne.dev/cdn/amethyst-ios")
                     Text("baconium.dev").tag("https://baconium.dev/jessi/jvm")
                     Text("roooot.dev").tag("https://roooot.dev/jessi/jvm")
@@ -1977,7 +2001,7 @@ struct SettingsView: View {
                 .normalizedSeparator()
                 
                 Button(action: {
-                    model.runjvmdltest(mirrorBase: testmirrorase)
+                    model.runjvmdltest(mirrorBase: simulatormirrorbase)
                 }) {
                     HStack(spacing: 10) {
                         if model.isjvmtestrunning {
@@ -2015,14 +2039,14 @@ struct SettingsView: View {
             } header: {
                 Text("Simulator Test")
             } footer: {
-                Text("You shouldnt see this as a normal JESSI consumer, if you do, ignore it and [report it](https://github.com/Baconium/JESSI/issues/new) to big daddy roooot (or baconmania)")
+                Text("You shouldnt see this as a normal JESSI consumer, if you do, ignore it or [report it](https://github.com/Baconium/JESSI/issues/new) to big daddy roooot (or baconmania)")
             }
 #endif
         }
         .listStyle(InsetGroupedListStyle())
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(item: $playitClaimSheetItem) { item in
+        .sheet(item: $playitclaimsheetitem) { item in
             SafariView(url: item.url)
                 .ignoresSafeArea()
         }
@@ -2033,21 +2057,40 @@ struct SettingsView: View {
                 dismissButton: .default(Text("OK"))
             )
         }
-        .alert(isPresented: showPlayitInvalidKeyAlert) {
+        .alert(isPresented: showplayitinvalidkeyalert) {
             Alert(
                 title: Text("Playit Link Invalid"),
                 message: Text("Your Playit link is invalid or expired. Please link again."),
                 dismissButton: .default(Text("OK"))
             )
         }
-        .alert(isPresented: $showResetPlayitConfirmation) {
-            Alert(
-                title: Text("Reset Playit?"),
-                message: Text("This will unlink Playit, clear cache, remove the current library, and download a fresh copy."),
-                primaryButton: .destructive(Text("Reset & Redownload")) {
-                    resetPlayitAndRedownload()
-                },
-                secondaryButton: .cancel()
+        .actionSheet(isPresented: $showrooootmenu) {
+            ActionSheet(
+                title: Text("roooot menu"),
+                buttons: [
+                    .default(Text("Open Site")) {
+                        UIApplication.shared.open(URL(string: "https://github.com/rooootdev")!, options: [:], completionHandler: nil)
+                    },
+                    .default(Text("Play Epic Game")) {
+                        print("test")
+                    },
+                    .cancel()
+                ]
+            )
+        }
+        .actionSheet(isPresented: $showresetplayitconfirmation) {
+            ActionSheet(
+                title: Text("Reset Playit"),
+                message: Text("Choose whether to reinstall Playit after reset, or just reset without reinstalling."),
+                buttons: [
+                    .destructive(Text("Reinstall Playit")) {
+                        redownloadplayit()
+                    },
+                    .destructive(Text("Reset Playit")) {
+                        resetplayit()
+                    },
+                    .cancel()
+                ]
             )
         }
         .alert(isPresented: showJvmInstallErrorAlert) {

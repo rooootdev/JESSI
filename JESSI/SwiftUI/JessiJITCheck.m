@@ -7,6 +7,7 @@
 #import <limits.h>
 #import <stdio.h>
 #import <string.h>
+#import <mach-o/dyld.h>
 #if __has_include(<sys/codesign.h>)
 #import <sys/codesign.h>
 #else
@@ -28,6 +29,36 @@ CFTypeRef SecTaskCopyValueForEntitlement(SecTaskRef task, CFStringRef entitlemen
 #endif
 
 #define CS_DEBUGGED 0x10000000
+
+static void jessi_append_livecontainer_log(NSString *line) {
+    NSString *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+    if (docs.length == 0 || line.length == 0) return;
+
+    NSString *path = [docs stringByAppendingPathComponent:@"livecontainerdetectiondebug.log"];
+    NSData *data = [[line stringByAppendingString:@"\n"] dataUsingEncoding:NSUTF8StringEncoding];
+    if (!data) return;
+
+    NSFileManager *fm = NSFileManager.defaultManager;
+    if (![fm fileExistsAtPath:path]) {
+        [data writeToFile:path atomically:YES];
+        return;
+    }
+
+    NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:path];
+    if (!handle) {
+        [data writeToFile:path atomically:YES];
+        return;
+    }
+
+    @try {
+        [handle seekToEndOfFile];
+        [handle writeData:data];
+    } @catch (NSException *exception) {
+        (void)exception;
+    } @finally {
+        [handle closeFile];
+    }
+}
 
 static BOOL getEntitlementValue(NSString *key) {
     SecTaskRef task = SecTaskCreateFromSelf(NULL);
@@ -99,12 +130,39 @@ BOOL jessi_is_trollstore_installed(void) {
 }
 
 BOOL jessi_is_livecontainer_installed(void) {
-    NSString *bundle = [NSBundle mainBundle].bundlePath;
-    if (bundle.length == 0) return NO;
+    NSString *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+    NSString *logpath = [docs stringByAppendingPathComponent:@"uhislivecontainerinstalledorlikenahnotsomuch.log"];
+    NSMutableString *log = [NSMutableString string];
 
-    NSString *parent = [[bundle stringByResolvingSymlinksInPath] stringByDeletingLastPathComponent];
-    NSString *parentname = parent.lastPathComponent ?: @"";
-    return [parentname caseInsensitiveCompare:@"LiveContainer"] == NSOrderedSame;
+    [log appendString:@"\nloaded images:\n"];
+
+    BOOL detected = NO;
+
+    uint32_t count = _dyld_image_count();
+    [log appendFormat:@"image count: %u\n\n", count];
+
+    for (uint32_t i = 0; i < count; i++) {
+        const char *name = _dyld_get_image_name(i);
+        if (!name) continue;
+
+        NSString *lower = [[NSString stringWithUTF8String:name] lowercaseString];
+        BOOL match = [lower containsString:@"tweakinjector.dylib"] || [lower containsString:@"tweakloader.dylib"];
+
+        [log appendFormat:@"[%u] %s %s\n",
+            i,
+            name,
+            match ? "<- aha!" : ""
+        ];
+
+        if (match) {
+            detected = YES;
+        }
+    }
+
+    [log appendFormat:@"\nlivecontainer detected: %s\n", detected ? "yeah" : "fuck nah"];
+    [log writeToFile:logpath atomically:YES encoding:NSUTF8StringEncoding error:nil];
+
+    return detected;
 }
 
 const char * _Nullable jessi_team_identifier(void) {
