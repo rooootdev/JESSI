@@ -1705,7 +1705,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading) {
                     Text("JESSI requires Java to function. Please install a JVM in the menu above. If you're unsure which version to select, select Java 21.")
                     
-                    if #available(iOS 26.0, *) {
+                    if model.isIOS26 {
                         Text("Java 8 is not supported on iOS 26+")
                     }
                 }

@@ -3,7 +3,13 @@
 #import "JessiPaths.h"
 #import "JessiSettings.h"
 
+#import <TargetConditionals.h>
+#if TARGET_OS_OSX && !TARGET_OS_MACCATALYST
+typedef NSInteger UIBackgroundTaskIdentifier;
+static const UIBackgroundTaskIdentifier UIBackgroundTaskInvalid = -1;
+#else
 #import <UIKit/UIKit.h>
+#endif
 #import <sys/socket.h>
 #import <netinet/in.h>
 #import <sys/time.h>
@@ -412,12 +418,14 @@ static BOOL jessi_read_all(int fd, void *buf, size_t len) {
     JessiSettings *settings = [JessiSettings shared];
     NSString *javaVersion = settings.javaVersion ?: @"8";
 
+#if !(TARGET_OS_OSX && !TARGET_OS_MACCATALYST)
     if ([JessiSettings shared].runInBackground) {
         self.bgTask = [[UIApplication sharedApplication] beginBackgroundTaskWithExpirationHandler:^{
             [[UIApplication sharedApplication] endBackgroundTask:self.bgTask];
             self.bgTask = UIBackgroundTaskInvalid;
         }];
     }
+#endif
 
     dispatch_async(self.runQueue, ^{
         char *argv0 = strdup("--server");
@@ -428,7 +436,8 @@ static BOOL jessi_read_all(int fd, void *buf, size_t len) {
 
         int code = 0;
         @try {
-            BOOL shouldUseSeparateProcess = jessi_is_trollstore_installed() && !settings.disableSeparateJVMProcessOnTrollStore;
+            BOOL shouldUseSeparateProcess = jessi_is_running_on_macos() ||
+                                           (jessi_is_trollstore_installed() && !settings.disableSeparateJVMProcessOnTrollStore);
             if (shouldUseSeparateProcess) {
                 pid_t pid;
                 NSString *executablePath = [[NSBundle mainBundle] executablePath];
@@ -471,10 +480,12 @@ static BOOL jessi_read_all(int fd, void *buf, size_t len) {
             [self emitConsole:[NSString stringWithFormat:@"\nServer exited with code: %d\n", code]];
             [self.delegate serverServiceDidChangeRunning:NO];
             
+#if !(TARGET_OS_OSX && !TARGET_OS_MACCATALYST)
             if (self.bgTask != UIBackgroundTaskInvalid) {
                 [[UIApplication sharedApplication] endBackgroundTask:self.bgTask];
                 self.bgTask = UIBackgroundTaskInvalid;
             }
+#endif
         });
     });
 }

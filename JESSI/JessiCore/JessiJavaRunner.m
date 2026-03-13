@@ -25,6 +25,7 @@
 #import <dirent.h>
 #import <limits.h>
 #import <sys/ucontext.h>
+#import <TargetConditionals.h>
 #if __has_include(<sys/fcntl.h>)
 #import <sys/fcntl.h>
 #endif
@@ -228,11 +229,13 @@ static BOOL jessi_device_requires_txm_workaround(void) {
 }
 
 static BOOL jessi_is_ios26_or_later_core(void) {
+    if (jessi_is_running_on_macos()) return NO;
     NSOperatingSystemVersion v = [NSProcessInfo processInfo].operatingSystemVersion;
     return v.majorVersion >= 26;
 }
 
 static BOOL jessi_is_ios18_or_earlier_core(void) {
+    if (jessi_is_running_on_macos()) return NO;
     NSOperatingSystemVersion v = [NSProcessInfo processInfo].operatingSystemVersion;
     return v.majorVersion <= 18;
 }
@@ -1305,10 +1308,12 @@ int jessi_server_main(int argc, char *argv[]) {
             }
 
             const char *jarPathC = argv[1];
-            const char *javaVersionC = argv[2];
+            NSString *javaVersion = [NSString stringWithUTF8String:argv[2] ?: "8"];
+            if (javaVersion.length == 0) javaVersion = @"8";
+            const char *javaVersionC = javaVersion.UTF8String;
             const char *workingDirC = argv[3];
 
-            NSString *javaHome = bundleJavaHomeForVersion([NSString stringWithUTF8String:javaVersionC]);
+            NSString *javaHome = bundleJavaHomeForVersion(javaVersion);
             if (!javaHome) {
                 fprintf(stderr, "Error: bundled Java runtime not found (java/ or java<ver>/)\n");
                 return 3;
@@ -1451,7 +1456,7 @@ int jessi_server_main(int argc, char *argv[]) {
             NSString *xmx = [NSString stringWithFormat:@"-Xmx%ldM", (long)heapMB];
             NSString *xms = [NSString stringWithFormat:@"-Xms%ldM", (long)initialHeapMB];
 
-            NSString *javaVersionStr = [NSString stringWithUTF8String:javaVersionC];
+            NSString *javaVersionStr = javaVersion;
             BOOL isJava17Plus = [javaVersionStr isEqualToString:@"17"] || [javaVersionStr isEqualToString:@"21"];
             BOOL ios26OrLater = jessi_is_ios26_or_later_core();
             BOOL txmSupport = [JessiSettings shared].txmSupport;
@@ -1635,11 +1640,13 @@ int jessi_tool_main(int argc, char *argv[]) {
             }
 
             const char *jarPathC = argv[1];
-            const char *javaVersionC = argv[2];
+            NSString *javaVersion = [NSString stringWithUTF8String:argv[2] ?: "8"];
+            if (javaVersion.length == 0) javaVersion = @"8";
+            const char *javaVersionC = javaVersion.UTF8String;
             const char *workingDirC = argv[3];
             const char *argsPathC = (argc >= 5 && argv[4] && argv[4][0]) ? argv[4] : NULL;
 
-            NSString *javaHome = bundleJavaHomeForVersion([NSString stringWithUTF8String:javaVersionC]);
+            NSString *javaHome = bundleJavaHomeForVersion(javaVersion);
             if (!javaHome) {
                 fprintf(stderr, "Error: bundled Java runtime not found (java/ or java<ver>/)\n");
                 return 3;
@@ -1732,7 +1739,7 @@ int jessi_tool_main(int argc, char *argv[]) {
 
             NSString *maxMeta = @"-XX:MaxMetaspaceSize=256M";
 
-            NSString *javaVersionStr = [NSString stringWithUTF8String:javaVersionC];
+            NSString *javaVersionStr = javaVersion;
             BOOL ios26OrLater = jessi_is_ios26_or_later_core();
 
             BOOL flagNettyNoNative = [[NSUserDefaults standardUserDefaults] boolForKey:@"jessi.jvm.flagNettyNoNative"];

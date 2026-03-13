@@ -1,6 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+BUILD_MACOS=0
+for arg in "$@"; do
+  case "$arg" in
+    --macos)
+      BUILD_MACOS=1
+      ;;
+    -h|--help)
+      echo "Usage: $0 [--macos]"
+      echo "  --macos   Build the Mac Catalyst .app into dist/"
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $arg" >&2
+      echo "Usage: $0 [--macos]" >&2
+      exit 2
+      ;;
+  esac
+done
+
 echo "This build has been sponsored by Israel, Glory to Benjamin Netanyahu."
 rm -rf dist
 rm -rf ../dist
@@ -14,6 +33,15 @@ PAYLOAD_DIR="$DIST_DIR/Payload"
 IPA_PATH="$DIST_DIR/${APP_NAME}.ipa"
 DERIVED_DATA_DIR="$PROJECT_DIR/build/DerivedData"
 
+SDK="iphoneos"
+DESTINATION="generic/platform=iOS"
+PRODUCT_SUBDIR="${CONFIGURATION}-iphoneos"
+if [[ "$BUILD_MACOS" == "1" ]]; then
+  SDK="iphoneos"
+  DESTINATION="platform=macOS"
+  PRODUCT_SUBDIR="${CONFIGURATION}-iphoneos"
+fi
+
 JESSI_LDID_SIGN="${JESSI_LDID_SIGN:-1}"
 JESSI_LDID_ENTITLEMENTS="${JESSI_LDID_ENTITLEMENTS:-$PROJECT_DIR/Config/JESSI.trollstore.entitlements}"
 
@@ -25,20 +53,45 @@ XCODEBUILD_LOG="$PROJECT_DIR/build/xcodebuild.log"
 mkdir -p "$(dirname "$XCODEBUILD_LOG")"
 rm -f "$XCODEBUILD_LOG"
 
+run_xcodebuild() {
+  local destination="$1"
+  xcodebuild \
+    -project "$PROJECT_DIR/JESSI.xcodeproj" \
+    -scheme "$SCHEME" \
+    -configuration "$CONFIGURATION" \
+    -sdk "$SDK" \
+    -destination "$destination" \
+    -derivedDataPath "$DERIVED_DATA_DIR" \
+    build \
+    CODE_SIGNING_ALLOWED=NO \
+    CODE_SIGNING_REQUIRED=NO \
+    CODE_SIGN_STYLE=Manual
+}
+
+if [[ "$BUILD_MACOS" == "1" ]]; then
+  MAC_DEST_ID="$({
+    xcodebuild -project "$PROJECT_DIR/JESSI.xcodeproj" -scheme "$SCHEME" -showdestinations 2>/dev/null || true
+  } | sed -n 's/.*platform:macOS[^}]*id:\([^,}]*\).*/\1/p' | head -n 1 | tr -d '[:space:]')"
+  if [[ -n "$MAC_DEST_ID" ]]; then
+    DESTINATION="id=$MAC_DEST_ID"
+  fi
+fi
+
 set +e
-xcodebuild \
-  -project "$PROJECT_DIR/JESSI.xcodeproj" \
-  -scheme "$SCHEME" \
-  -configuration "$CONFIGURATION" \
-  -sdk iphoneos \
-  -destination 'generic/platform=iOS' \
-  -derivedDataPath "$DERIVED_DATA_DIR" \
-  build \
-  CODE_SIGNING_ALLOWED=NO \
-  CODE_SIGNING_REQUIRED=NO \
-  CODE_SIGN_STYLE=Manual \
-  2>&1 | tee "$XCODEBUILD_LOG"
-XCODEBUILD_STATUS=${PIPESTATUS[0]}
+if [[ "$BUILD_MACOS" == "1" ]]; then
+  XCODEBUILD_STATUS=1
+  for TRY_DESTINATION in "$DESTINATION" "platform=macOS,name=My Mac" "platform=macOS,variant=Mac Catalyst"; do
+    echo "Building with destination: $TRY_DESTINATION"
+    run_xcodebuild "$TRY_DESTINATION" 2>&1 | tee "$XCODEBUILD_LOG"
+    XCODEBUILD_STATUS=${PIPESTATUS[0]}
+    if [[ $XCODEBUILD_STATUS -eq 0 ]]; then
+      break
+    fi
+  done
+else
+  run_xcodebuild "$DESTINATION" 2>&1 | tee "$XCODEBUILD_LOG"
+  XCODEBUILD_STATUS=${PIPESTATUS[0]}
+fi
 set -e
 
 if [[ $XCODEBUILD_STATUS -ne 0 ]]; then
@@ -48,10 +101,29 @@ if [[ $XCODEBUILD_STATUS -ne 0 ]]; then
   exit "$XCODEBUILD_STATUS"
 fi
 
-APP_DIR="$DERIVED_DATA_DIR/Build/Products/${CONFIGURATION}-iphoneos/${APP_NAME}.app"
+APP_DIR="$DERIVED_DATA_DIR/Build/Products/${PRODUCT_SUBDIR}/${APP_NAME}.app"
+if [[ "$BUILD_MACOS" == "1" && ! -d "$APP_DIR" ]]; then
+  APP_DIR="$DERIVED_DATA_DIR/Build/Products/${CONFIGURATION}-maccatalyst/${APP_NAME}.app"
+fi
 if [[ ! -d "$APP_DIR" ]]; then
   echo "ERROR: Could not find built ${APP_NAME}.app at: $APP_DIR" >&2
   exit 1
+fi
+
+if [[ "$BUILD_MACOS" == "1" ]]; then
+  mkdir -p "$DIST_DIR"
+  DEST_APP="$DIST_DIR/${APP_NAME}.app"
+  rm -rf "$DEST_APP"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -aL --delete "$APP_DIR/" "$DEST_APP/"
+  else
+    mkdir -p "$DEST_APP"
+    cp -aL "$APP_DIR/." "$DEST_APP/"
+  fi
+
+  echo "Created: $DEST_APP"
+  echo "macOS app built successfully"
+  exit 0
 fi
 
 mkdir -p "$PAYLOAD_DIR"
