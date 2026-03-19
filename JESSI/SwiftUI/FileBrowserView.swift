@@ -1,6 +1,8 @@
 import SwiftUI
 import UniformTypeIdentifiers
+#if canImport(UIKit)
 import UIKit
+#endif
 import Darwin
 
 struct FileBrowserView: View {

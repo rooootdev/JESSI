@@ -1,8 +1,3 @@
-
-
-
-
-
 #define	__MIG_check__Reply__mach_exc_subsystem__ 1
 
 #include "mach_excServer.h"

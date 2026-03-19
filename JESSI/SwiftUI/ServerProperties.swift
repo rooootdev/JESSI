@@ -1,6 +1,8 @@
 import Foundation
 import Combine
+#if canImport(UIKit)
 import UIKit
+#endif
 
 struct ServerProperty: Identifiable, Equatable, Hashable {
     let id = UUID()

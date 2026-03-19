@@ -20,7 +20,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)save;
 
 @property (nonatomic, copy) NSString *launchArguments;
-@property (nonatomic, copy) NSString *curseForgeAPIKey;
+@property (nonatomic, copy) NSString *cfapikey;
 
 @end
 

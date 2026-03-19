@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>APP_GROUP_ID</key>
+	<string>$(APP_GROUP_ID)</string>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -9,7 +13,7 @@
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.baconmania.jessi</string>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
@@ -20,17 +24,15 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>APP_GROUP_ID</key>
-	<string>$(APP_GROUP_ID)</string>
 	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoadsInLocalNetwork</key>
 		<true/>
 	</dict>
-	<key>LSSupportsOpeningDocumentsInPlace</key>
-	<true/>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_minecraft._tcp</string>
@@ -42,8 +44,6 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>JESSI uses location access to keep the app alive in the background when this option is enabled. Your location is not stored.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
-	<true/>
-	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>UIBackgroundModes</key>
 	<array>

@@ -72,6 +72,9 @@
 		B1C0F700A1B2C3D4E5F60024 /* UniversalJIT26Extension.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = UniversalJIT26Extension.js; sourceTree = "<group>"; };
 		B1C0F700A1B2C3D4E5F60025 /* DeviceNames.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceNames.swift; sourceTree = "<group>"; };
 		B1C0F700A1B2C3D4E5F60050 /* ServerProperties.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerProperties.swift; sourceTree = "<group>"; };
+		CCF7A2282F6CAF6600B5A839 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		CCF7A2292F6CAF6600B5A839 /* JESSI.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = JESSI.entitlements; sourceTree = "<group>"; };
+		CCF7A22A2F6CAF6600B5A839 /* JESSI.trollstore.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = JESSI.trollstore.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -90,6 +93,7 @@
 		A6C524862F2873DF0030EE41 = {
 			isa = PBXGroup;
 			children = (
+				CCF7A22B2F6CAF6600B5A839 /* Config */,
 				A6C524912F2873DF0030EE41 /* JESSI */,
 				A6C524902F2873DF0030EE41 /* Products */,
 			);
@@ -182,6 +186,16 @@
 				B1C0F700A1B2C3D4E5F60024 /* UniversalJIT26Extension.js */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		CCF7A22B2F6CAF6600B5A839 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				CCF7A2282F6CAF6600B5A839 /* Info.plist */,
+				CCF7A2292F6CAF6600B5A839 /* JESSI.entitlements */,
+				CCF7A22A2F6CAF6600B5A839 /* JESSI.trollstore.entitlements */,
+			);
+			path = Config;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -422,7 +436,7 @@
 				CODE_SIGN_ENTITLEMENTS = Config/JESSI.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 6XKA3GY3KZ;
+				DEVELOPMENT_TEAM = DN4S6CXFWY;
 				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_PREVIEWS = NO;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -442,7 +456,7 @@
 					"-Wl,-export_dynamic",
 					"-Wl,-exported_symbol,_main",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.baconmania.jessi;
+				PRODUCT_BUNDLE_IDENTIFIER = com.roooot.jessi;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
@@ -467,7 +481,7 @@
 				CODE_SIGN_ENTITLEMENTS = Config/JESSI.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 6XKA3GY3KZ;
+				DEVELOPMENT_TEAM = DN4S6CXFWY;
 				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_PREVIEWS = NO;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -487,7 +501,7 @@
 					"-Wl,-export_dynamic",
 					"-Wl,-exported_symbol,_main",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.baconmania.jessi;
+				PRODUCT_BUNDLE_IDENTIFIER = com.roooot.jessi;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";

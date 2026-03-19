@@ -1,8 +1,9 @@
 import Foundation
 import SwiftUI
 import Combine
+#if canImport(UIKit)
 import UIKit
-
+#endif
 struct SheetItem: Identifiable {
     let id = UUID()
     let input: String

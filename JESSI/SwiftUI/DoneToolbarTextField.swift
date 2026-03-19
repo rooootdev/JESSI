@@ -1,5 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#endif
 
 // so bascially without this theres no way to close the numpad :troll:
 

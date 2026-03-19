@@ -1,6 +1,9 @@
 import SwiftUI
 import UniformTypeIdentifiers
+
+#if canImport(UIKit)
 import UIKit
+#endif
 
 enum ServerSoftwareSwift: String, CaseIterable, Identifiable {
     case vanilla = "Vanilla"

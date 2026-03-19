@@ -1,8 +1,6 @@
 #ifndef	_mach_exc_user_
 #define	_mach_exc_user_
 
-
-
 #include <string.h>
 #include <mach/ndr.h>
 #include <mach/boolean.h>
@@ -12,8 +10,6 @@
 #include <mach/message.h>
 #include <mach/mig_errors.h>
 #include <mach/port.h>
-	
-
 
 #ifndef KERNEL
 #if defined(__has_include)

@@ -1,6 +1,8 @@
 import SwiftUI
 import Combine
+#if canImport(UIKit)
 import UIKit
+#endif
 import Darwin
 import CoreLocation
 import AVFoundation
@@ -288,7 +290,7 @@ final class SettingsModel: ObservableObject {
     @Published var totalRAM: String = ""
     @Published var freeRAM: String = ""
     @Published var launchArgs: String = ""
-    @Published var curseForgeAPIKey: String = ""
+    @Published var cfapikey: String = ""
     @Published var runInBackground: Bool = false
     @Published var disableSeparateJVMProcessOnTrollStore: Bool = false
     @Published var isIOS26: Bool = false
@@ -350,7 +352,7 @@ final class SettingsModel: ObservableObject {
         totalRAM = formatRAM(ProcessInfo.processInfo.physicalMemory)
         refreshSystemStats()
         launchArgs = s.launchArguments
-        curseForgeAPIKey = s.curseForgeAPIKey
+        cfapikey = s.cfapikey
         runInBackground = s.runInBackground
         disableSeparateJVMProcessOnTrollStore = s.disableSeparateJVMProcessOnTrollStore
         isIOS26 = jessi_is_ios26_or_later()
@@ -373,9 +375,9 @@ final class SettingsModel: ObservableObject {
         s.save()
     }
 
-    func applyAndSaveCurseForgeAPIKey() {
+    func applyandsavecfapikey() {
         let s = JessiSettings.shared()
-        s.curseForgeAPIKey = curseForgeAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        s.cfapikey = cfapikey.trimmingCharacters(in: .whitespacesAndNewlines)
         s.save()
     }
 
@@ -1119,6 +1121,10 @@ struct SettingsView: View {
     @State private var showsystemstatuscolors: Bool = false
     @State private var showrooootmenu: Bool = false
     @State private var simulatormirrorbase: String = "https://crystall1ne.dev/cdn/amethyst-ios"
+    @AppStorage("jessi.curseforge.keyless") private var keylesscf: Bool = false
+    @State private var iskeylesscfdownloaded: Bool = false
+    @State private var keylesscferror: String? = nil
+    @State private var keylesscfdownloading: Bool = false
 
     private var isPresentingPlayitClaimSheet: Bool {
         playitclaimsheetitem != nil
@@ -1344,6 +1350,41 @@ struct SettingsView: View {
         playitmodel.clearcache()
         tunnelingmodel.refreshinstalledservices()
         tunnelingmodel.refreshavailableservices()
+    }
+
+    private func refreshkeylesscfstatus() {
+        iskeylesscfdownloaded = KeylessCurseClientPaths.isInstalled()
+        if iskeylesscfdownloaded {
+            do {
+                try KeylessCurseClient.shared.ensureLoaded()
+                keylesscferror = nil
+            } catch {
+                keylesscferror = error.localizedDescription
+            }
+        }
+    }
+
+    private func startkeylesscfdownload() {
+        guard !keylesscfdownloading else { return }
+        keylesscfdownloading = true
+        keylesscferror = nil
+
+        downloadKeylessCurseClient { result in
+            DispatchQueue.main.async {
+                self.keylesscfdownloading = false
+                switch result {
+                case .success:
+                    self.refreshkeylesscfstatus()
+                    do {
+                        try KeylessCurseClient.shared.ensureLoaded()
+                    } catch {
+                        self.keylesscferror = error.localizedDescription
+                    }
+                case .failure(let error):
+                    self.keylesscferror = error.localizedDescription
+                }
+            }
+        }
     }
 
     private func resumetunnelingondemand() {
@@ -1910,6 +1951,41 @@ struct SettingsView: View {
                 }
             }
             
+            if keylesscf {
+                Section {
+                    if keylesscfdownloading {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            Text("Downloading CurseClient…")
+                                .foregroundColor(.secondary)
+                        }
+                    } else {
+                        Button {
+                            startkeylesscfdownload()
+                        } label: {
+                            Text(iskeylesscfdownloaded ? "Reinstall CurseClient" : "Download CurseClient")
+                        }
+                        .disabled(keylesscfdownloading)
+                    }
+
+                    if iskeylesscfdownloaded {
+                        Text("Installed at: \(KeylessCurseClientPaths.libraryPath)")
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+                    }
+
+                    if let err = keylesscferror, !err.isEmpty {
+                        Text(err)
+                            .font(.footnote)
+                            .foregroundColor(.red)
+                    }
+                } header: {
+                    Text("Keyless CurseForge")
+                } footer: {
+                    Text("This will download an additional ~7MB. Made possible by [ObjectiveMoon](https://github.com/ObjectiveMoonmc).")
+                }
+            }
+            
             Section(header: Text("Miscellaneous"), footer: Text(model.heapDescription)) {
                 if model.isMacCatalyst {
                     Button(action: {
@@ -1930,11 +2006,16 @@ struct SettingsView: View {
                     .normalizedSeparator()
                 }
 
-                HStack(spacing: 12) {
-                    CurseForgeField(model: model)
-                        .frame(maxWidth: 420)
+                if !keylesscf {
+                    HStack(spacing: 12) {
+                        CurseForgeField(model: model)
+                            .frame(maxWidth: 420)
+                            .disabled(keylesscf)
+                    }
+                    .normalizedSeparator()
                 }
-                .normalizedSeparator()
+                
+                Toggle("Use Keyless CurseForge", isOn: $keylesscf)
 
                 if model.isTrollStore {
                     Toggle("Disable separate JVM process", isOn: Binding(
@@ -2122,6 +2203,7 @@ struct SettingsView: View {
                     .padding(.vertical, 16)
                     .padding(.horizontal, 16)
                     .onTapGesture {
+                        print("hello?")
                         showrooootmenu = true
                     }
                 }
@@ -2251,7 +2333,7 @@ struct SettingsView: View {
             model.javaVersion = s.javaVersion
             model.heapMB = s.maxHeapMB
             model.heapText = String(s.maxHeapMB)
-            model.curseForgeAPIKey = s.curseForgeAPIKey
+            model.cfapikey = s.cfapikey
 
             if !model.isTrollStore,
                keepalivemethodraw == keepalivemgr.keepalivemethod.trollstore.rawValue {
@@ -2266,6 +2348,7 @@ struct SettingsView: View {
             model.refreshInstalledJVMVersions()
             keepalivemgr.shared.startifenabled()
             refreshkeepaliveauthstat()
+            refreshkeylesscfstatus()
 
             setInstallSelection(installSelection.subtracting(model.installedJVMVersions))
 
@@ -2315,6 +2398,13 @@ struct SettingsView: View {
         }
         .onChange(of: upnpPortsCSV) { _ in
             applyUpnpIfNeeded()
+        }
+        .onChange(of: keylesscf) { _ in
+            keylesscferror = nil
+            refreshkeylesscfstatus()
+            if keylesscf && !iskeylesscfdownloaded {
+                startkeylesscfdownload()
+            }
         }
         .overlay(
             Group {
@@ -2380,34 +2470,37 @@ struct SafariView: UIViewControllerRepresentable {
 }
 
 struct CurseForgeField: View {
+    @Environment(\.isEnabled) private var isenabled
     @ObservedObject var model: SettingsModel
-    @State private var isSecure: Bool = true
+    @State private var issecure: Bool = true
     @State private var showeasteregg: Bool = false
     @State private var eastereggtitle: String = ""
     @State private var eastereggmsg: String = ""
     @State private var lasttriggeredkey: String? = nil
 
     private static let eastereggs: [String: (title: String, message: String)] = [
-        "loveyachilly": (title: "i think youre really pretty lol", message: "whats that mean?")
+        "loveyachilly": (title: "i think youre really uhh pretty", message: "whats that mean?")
     ]
 
     var body: some View {
         HStack(spacing: 12) {
             Group {
-                if isSecure {
-                    SecureField("CurseForge API Key", text: $model.curseForgeAPIKey)
+                if issecure {
+                    SecureField("CurseForge API Key", text: $model.cfapikey)
+                        .foregroundColor(isenabled ? .primary : .secondary)
                 } else {
-                    TextField("CurseForge API Key", text: $model.curseForgeAPIKey)
+                    TextField("CurseForge API Key", text: $model.cfapikey)
+                        .foregroundColor(isenabled ? .primary : .secondary)
                 }
             }
             .frame(maxWidth: 420)
-            .onChange(of: model.curseForgeAPIKey) { newValue in
-                model.applyAndSaveCurseForgeAPIKey()
+            .onChange(of: model.cfapikey) { newValue in
+                model.applyandsavecfapikey()
                 maybeshoweasteregg(for: newValue)
             }
 
-            Button(action: { isSecure.toggle() }) {
-                Image(systemName: isSecure ? "eye.slash" : "eye")
+            Button(action: { issecure.toggle() }) {
+                Image(systemName: issecure ? "eye.slash" : "eye")
                     .foregroundColor(.secondary)
             }
             .buttonStyle(PlainButtonStyle())
@@ -2492,4 +2585,184 @@ private class JVMDownloadProgressDelegate: NSObject, URLSessionDownloadDelegate 
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
     }
+}
+
+// MARK: - Keyless CurseForge (shared)
+
+struct KeylessCurseClientPaths {
+    static let fileName = "libcurseclient.dylib"
+    static let downloadURL = URL(string: "https://github.com/rooootdev/CurseClient-Rust/releases/download/latest/libcurseclient.dylib")!
+
+    static var baseDir: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("CurseClient", isDirectory: true)
+    }
+
+    static var libraryURL: URL {
+        baseDir.appendingPathComponent(fileName, isDirectory: false)
+    }
+
+    static var libraryPath: String {
+        libraryURL.path
+    }
+
+    static func isInstalled() -> Bool {
+        let fm = FileManager.default
+        var isDir: ObjCBool = false
+        return fm.fileExists(atPath: libraryPath, isDirectory: &isDir) && !isDir.boolValue
+    }
+}
+
+enum KeylessCurseClientError: LocalizedError {
+    case missingLibrary
+    case loadFailed(String)
+    case symbolMissing(String)
+    case invalidResponse
+    case invalidJSON
+
+    var errorDescription: String? {
+        switch self {
+        case .missingLibrary:
+            return "Keyless CurseForge library is not installed"
+        case .loadFailed(let reason):
+            return "Failed to load CurseClient dylib: \(reason)"
+        case .symbolMissing(let name):
+            return "Missing symbol in CurseClient dylib: \(name)"
+        case .invalidResponse:
+            return "Keyless CurseForge returned an invalid response"
+        case .invalidJSON:
+            return "Keyless CurseForge returned malformed JSON"
+        }
+    }
+}
+
+final class KeylessCurseClient {
+    static let shared = KeylessCurseClient()
+
+    typealias GetJSONFn = @convention(c) (UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>?
+    typealias FreeFn = @convention(c) (UnsafeMutablePointer<CChar>?) -> Void
+
+    private var handle: UnsafeMutableRawPointer?
+    private var getModsListJSON: GetJSONFn?
+    private var getModFilesJSON: GetJSONFn?
+    private var freeString: FreeFn?
+
+    func ensureLoaded() throws {
+        if handle != nil { return }
+        guard KeylessCurseClientPaths.isInstalled() else {
+            throw KeylessCurseClientError.missingLibrary
+        }
+
+        guard let handle = dlopen(KeylessCurseClientPaths.libraryPath, RTLD_NOW) else {
+            let err = String(cString: dlerror())
+            let jitEnabled = jessi_check_jit_enabled()
+            let tsInstalled = jessi_is_trollstore_installed()
+            var hint = ""
+            if !jitEnabled {
+                hint = " (JIT disabled; dyld bypass may be inactive)"
+            } else if !tsInstalled {
+                hint = " (TrollStore not detected; library validation may block dylibs)"
+            }
+            throw KeylessCurseClientError.loadFailed(err + hint)
+        }
+
+        guard let modsSym = dlsym(handle, "cc_getmodslistjson") else {
+            dlclose(handle)
+            throw KeylessCurseClientError.symbolMissing("cc_getmodslistjson")
+        }
+        guard let filesSym = dlsym(handle, "cc_getmodfilesjson") else {
+            dlclose(handle)
+            throw KeylessCurseClientError.symbolMissing("cc_getmodfilesjson")
+        }
+        guard let freeSym = dlsym(handle, "cc_free_string") else {
+            dlclose(handle)
+            throw KeylessCurseClientError.symbolMissing("cc_free_string")
+        }
+
+        self.handle = handle
+        self.getModsListJSON = unsafeBitCast(modsSym, to: GetJSONFn.self)
+        self.getModFilesJSON = unsafeBitCast(filesSym, to: GetJSONFn.self)
+        self.freeString = unsafeBitCast(freeSym, to: FreeFn.self)
+    }
+
+    func modsListJSON(query: String) throws -> String {
+        try ensureLoaded()
+        guard let fn = getModsListJSON, let free = freeString else {
+            throw KeylessCurseClientError.invalidResponse
+        }
+        return try withCString(query) { cstr in
+            guard let raw = fn(cstr) else { throw KeylessCurseClientError.invalidResponse }
+            let result = String(cString: raw)
+            free(raw)
+            return result
+        }
+    }
+
+    func modFilesJSON(dllink: String) throws -> String {
+        try ensureLoaded()
+        guard let fn = getModFilesJSON, let free = freeString else {
+            throw KeylessCurseClientError.invalidResponse
+        }
+        return try withCString(dllink) { cstr in
+            guard let raw = fn(cstr) else { throw KeylessCurseClientError.invalidResponse }
+            let result = String(cString: raw)
+            free(raw)
+            return result
+        }
+    }
+
+    private func withCString<T>(_ value: String, _ body: (UnsafePointer<CChar>) throws -> T) throws -> T {
+        try value.withCString { try body($0) }
+    }
+}
+
+func downloadKeylessCurseClient(completion: @escaping (Result<Void, Error>) -> Void) {
+    let fm = FileManager.default
+    let tmpRoot = fm.temporaryDirectory.appendingPathComponent("jessi-curseclient-install", isDirectory: true)
+    let workDir = tmpRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let downloadPath = workDir.appendingPathComponent(KeylessCurseClientPaths.fileName)
+
+    let task = URLSession.shared.downloadTask(with: KeylessCurseClientPaths.downloadURL) { tempURL, _, error in
+        if let error {
+            completion(.failure(error))
+            return
+        }
+        guard let tempURL else {
+            completion(.failure(NSError(domain: "JESSI", code: 2, userInfo: [NSLocalizedDescriptionKey: "Download failed"])))
+            return
+        }
+
+        do {
+            try fm.createDirectory(at: workDir, withIntermediateDirectories: true)
+            defer { try? fm.removeItem(at: workDir) }
+
+            if fm.fileExists(atPath: downloadPath.path) { try? fm.removeItem(at: downloadPath) }
+            try fm.moveItem(at: tempURL, to: downloadPath)
+
+            let finalDir = KeylessCurseClientPaths.baseDir
+            let staging = finalDir.deletingLastPathComponent()
+                .appendingPathComponent("CurseClient.staging-\(UUID().uuidString)", isDirectory: true)
+            if fm.fileExists(atPath: staging.path) { try? fm.removeItem(at: staging) }
+            try fm.createDirectory(at: staging, withIntermediateDirectories: true)
+
+            let stagedFile = staging.appendingPathComponent(KeylessCurseClientPaths.fileName, isDirectory: false)
+            if fm.fileExists(atPath: stagedFile.path) { try? fm.removeItem(at: stagedFile) }
+            try fm.moveItem(at: downloadPath, to: stagedFile)
+
+            if fm.fileExists(atPath: finalDir.path) {
+                let backup = finalDir.deletingLastPathComponent()
+                    .appendingPathComponent("CurseClient.backup-\(UUID().uuidString)", isDirectory: true)
+                try? fm.removeItem(at: backup)
+                try fm.moveItem(at: finalDir, to: backup)
+                try? fm.removeItem(at: backup)
+            }
+
+            try fm.moveItem(at: staging, to: finalDir)
+            completion(.success(()))
+        } catch {
+            completion(.failure(error))
+        }
+    }
+
+    task.resume()
 }

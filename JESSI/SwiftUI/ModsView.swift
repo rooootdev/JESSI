@@ -219,6 +219,35 @@ struct CurseForgeDownloadURLResponse: Decodable {
     let data: String
 }
 
+struct KeylessCurseDependency: Decodable {
+    let name: String
+    let author: String
+    let dllink: String
+}
+
+struct KeylessCurseMod: Decodable {
+    let name: String
+    let author: String
+    let description: String
+    let downloads: String
+    let updated: String
+    let gameversion: String
+    let mainmodloader: String
+    let dllink: String
+    let dependencies: [KeylessCurseDependency]?
+}
+
+struct KeylessCurseFile: Decodable {
+    let filename: String
+    let versions: [String]
+    let loaders: [String]
+    let uploaded: String
+    let size: String
+    let downloads: String
+    let fileurl: String
+    let jardlurl: String
+}
+
 struct InstalledModRecord: Codable {
     let filename: String
     let contentType: ContentType
@@ -259,6 +288,7 @@ final class ModsVM: ObservableObject {
     
     private let modrinthBaseURL = "https://api.modrinth.com/v2/search"
     private let curseForgeBaseURL = "https://api.curseforge.com/v1"
+    private let keylessClient = KeylessCurseClient.shared
     private var offset = 0
     private let limit = 20
     private var canload = true
@@ -320,8 +350,8 @@ final class ModsVM: ObservableObject {
         }
     }
 
-    var curseForgeAPIKey: String? {
-        let saved = JessiSettings.shared().curseForgeAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+    var cfapikey: String? {
+        let saved = JessiSettings.shared().cfapikey.trimmingCharacters(in: .whitespacesAndNewlines)
         if !saved.isEmpty {
             return saved
         }
@@ -341,6 +371,10 @@ final class ModsVM: ObservableObject {
         default:
             return nil
         }
+    }
+
+    var isKeylessCurseForgeEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "jessi.curseforge.keyless")
     }
 
     
@@ -475,7 +509,11 @@ final class ModsVM: ObservableObject {
     }
 
     private func searchCurseForge() async throws -> [ModSearchItem] {
-        guard let key = curseForgeAPIKey, !key.isEmpty else {
+        if isKeylessCurseForgeEnabled {
+            return try await searchCurseForgeKeyless()
+        }
+
+        guard let key = cfapikey, !key.isEmpty else {
             throw NSError(
                 domain: "Missing CurseForge API key in Settings or Info.plist",
                 code: 0
@@ -525,6 +563,93 @@ final class ModsVM: ObservableObject {
                 author: mod.authors.first?.name,
                 follows: 0
             )
+        }
+    }
+
+    private func searchCurseForgeKeyless() async throws -> [ModSearchItem] {
+        guard KeylessCurseClientPaths.isInstalled() else {
+            throw NSError(domain: "Keyless CurseForge library not installed. Download it in Settings.", code: 0)
+        }
+
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let json = try await Task.detached { [client = keylessClient] in
+            try client.modsListJSON(query: trimmed)
+        }.value
+
+        guard let data = json.data(using: .utf8) else {
+            throw KeylessCurseClientError.invalidJSON
+        }
+        let decoded = try JSONDecoder().decode([KeylessCurseMod].self, from: data)
+
+        let filtered = decoded.filter { mod in
+            let resolved = keylessContentType(from: mod.dllink, fallback: contentType)
+            return resolved == contentType
+        }
+
+        let mapped: [ModSearchItem] = filtered.map { mod in
+            let resolved = keylessContentType(from: mod.dllink, fallback: contentType)
+            return ModSearchItem(
+                id: "\(ModProvider.curseForge.rawValue):\(mod.dllink)",
+                provider: .curseForge,
+                providerID: mod.dllink,
+                contentType: resolved,
+                title: mod.name,
+                description: mod.description,
+                downloads: parseDownloadsCount(mod.downloads),
+                iconURL: nil,
+                author: mod.author,
+                follows: 0
+            )
+        }
+
+        let start = min(offset, mapped.count)
+        let end = min(start + limit, mapped.count)
+        if start >= end { return [] }
+        return Array(mapped[start..<end])
+    }
+
+    func keylessModFiles(dllink: String) async throws -> [KeylessCurseFile] {
+        guard KeylessCurseClientPaths.isInstalled() else {
+            throw NSError(domain: "Keyless CurseForge library not installed. Download it in Settings.", code: 0)
+        }
+
+        let json = try await Task.detached { [client = keylessClient] in
+            try client.modFilesJSON(dllink: dllink)
+        }.value
+        guard let data = json.data(using: .utf8) else {
+            throw KeylessCurseClientError.invalidJSON
+        }
+        return try JSONDecoder().decode([KeylessCurseFile].self, from: data)
+    }
+
+    private func keylessContentType(from link: String, fallback: ContentType) -> ContentType {
+        let lower = link.lowercased()
+        if lower.contains("/mc-mods/") { return .mod }
+        if lower.contains("/modpacks/") { return .modpack }
+        if lower.contains("/texture-packs/") || lower.contains("/resourcepacks/") {
+            return .resourcepack
+        }
+        if lower.contains("/data-packs/") || lower.contains("/datapacks/") {
+            return .datapack
+        }
+        return fallback
+    }
+
+    private func parseDownloadsCount(_ raw: String) -> Int {
+        let cleaned = raw.replacingOccurrences(of: ",", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return 0 }
+        let suffix = cleaned.last ?? " "
+        let numberPart = (suffix.isLetter ? String(cleaned.dropLast()) : cleaned)
+        let value = Double(numberPart) ?? 0
+        switch suffix.uppercased() {
+        case "B":
+            return Int(value * 1_000_000_000)
+        case "M":
+            return Int(value * 1_000_000)
+        case "K":
+            return Int(value * 1_000)
+        default:
+            return Int(value)
         }
     }
     
@@ -862,7 +987,11 @@ private struct Mod: View {
     }
 
     private func curseforgeinstall() async throws -> InstalledModRecord {
-        guard let key = model.curseForgeAPIKey, !key.isEmpty else {
+        if model.isKeylessCurseForgeEnabled {
+            return try await curseforgeinstallkeyless()
+        }
+
+        guard let key = model.cfapikey, !key.isEmpty else {
             throw NSError(domain: "Missing CurseForge API key in Settings or Info.plist", code: 0)
         }
 
@@ -920,6 +1049,42 @@ private struct Mod: View {
         return try writeModFile(data: moddata, filename: selected.file.fileName)
     }
 
+    private func curseforgeinstallkeyless() async throws -> InstalledModRecord {
+        let dllink = mod.providerID
+        guard dllink.hasPrefix("http") else {
+            throw NSError(domain: "invalid CurseForge link for keyless install", code: 0)
+        }
+
+        let files = try await model.keylessModFiles(dllink: dllink)
+        guard !files.isEmpty else {
+            throw NSError(domain: "no compatible CurseForge file found", code: 0)
+        }
+
+        guard let selected = selectKeylessFile(files) else {
+            throw NSError(domain: "no compatible CurseForge file found", code: 0)
+        }
+
+        let download = selected.jardlurl.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !download.isEmpty, let url = URL(string: download) else {
+            throw NSError(domain: "invalid CurseForge file URL", code: 0)
+        }
+
+        let (moddata, response) = try await URLSession.shared.data(from: url)
+        let responseName = response.suggestedFilename ?? url.lastPathComponent
+        let filename = responseName.isEmpty ? selected.filename : responseName
+
+        if mod.contentType == .modpack, filename.lowercased().hasSuffix(".mrpack") {
+            return try await installModpackFromMrpack(data: moddata, filename: filename)
+        }
+        if mod.contentType == .modpack, filename.lowercased().hasSuffix(".zip") {
+            return try await installcurseforgemodpackzipkeyless(data: moddata, filename: filename)
+        }
+        if mod.contentType == .datapack, filename.lowercased().hasSuffix(".zip") {
+            return try installdatapackzip(data: moddata, filename: filename)
+        }
+        return try writeModFile(data: moddata, filename: filename)
+    }
+
     private func isPreferredCurseForgeFile(_ file: CurseForgeFile) -> Bool {
         let name = file.fileName.lowercased()
         switch mod.contentType {
@@ -929,6 +1094,55 @@ private struct Mod: View {
             return name.hasSuffix(".mrpack") || name.hasSuffix(".zip")
         case .resourcepack, .datapack:
             return name.hasSuffix(".zip")
+        }
+    }
+
+    private func selectKeylessFile(_ files: [KeylessCurseFile]) -> KeylessCurseFile? {
+        let mcversion = model.serverver?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let loader = keylessLoaderName()
+
+        func matchesVersion(_ file: KeylessCurseFile) -> Bool {
+            guard let mcversion, !mcversion.isEmpty else { return true }
+            if file.versions.isEmpty { return true }
+            return file.versions.contains(where: { mcversion.hasPrefix($0) || $0.hasPrefix(mcversion) })
+        }
+
+        func matchesLoader(_ file: KeylessCurseFile) -> Bool {
+            guard let loader else { return true }
+            if file.loaders.isEmpty { return true }
+            return file.loaders.contains { $0.caseInsensitiveCompare(loader) == .orderedSame }
+        }
+
+        func matchesType(_ file: KeylessCurseFile) -> Bool {
+            let name = file.filename.lowercased()
+            switch mod.contentType {
+            case .mod:
+                return name.hasSuffix(".jar")
+            case .modpack:
+                return name.hasSuffix(".mrpack") || name.hasSuffix(".zip")
+            case .resourcepack, .datapack:
+                return name.hasSuffix(".zip")
+            }
+        }
+
+        let typeFiltered = files.filter(matchesType)
+        let filtered = typeFiltered.filter(matchesVersion).filter(matchesLoader)
+        let preferred = filtered.isEmpty ? typeFiltered : filtered
+        return preferred.first(where: { !$0.jardlurl.isEmpty }) ?? preferred.first
+    }
+
+    private func keylessLoaderName() -> String? {
+        switch model.parsedserversoft() {
+        case .forge:
+            return "Forge"
+        case .fabric:
+            return "Fabric"
+        case .neoforge:
+            return "NeoForge"
+        case .quilt:
+            return "Quilt"
+        default:
+            return nil
         }
     }
 
@@ -1144,6 +1358,107 @@ private struct Mod: View {
         modlogger.enclosedlog("installed modpack \(mod.title) with \(managedpaths.count) files")
         modlogger.flushdivider()
         return InstalledModRecord(filename: markername, contentType: .modpack, managedPaths: managedpaths)
+    }
+
+    private func installcurseforgemodpackzipkeyless(data: Data, filename: String) async throws -> InstalledModRecord {
+        let fm = FileManager.default
+        guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            throw NSError(domain: "documents directory not found", code: 0)
+        }
+
+        let serverroot = docs
+            .appendingPathComponent("servers")
+            .appendingPathComponent(servername)
+        try fm.createDirectory(at: serverroot, withIntermediateDirectories: true)
+
+        let temproot = fm.temporaryDirectory
+            .appendingPathComponent("jessi-curseforge-modpack-install", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try fm.createDirectory(at: temproot, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: temproot) }
+
+        let archiveurl = temproot.appendingPathComponent(filename)
+        try data.write(to: archiveurl, options: [.atomic])
+        let archive = try Archive(url: archiveurl, accessMode: .read)
+
+        guard let manifestentry = archive["manifest.json"] else {
+            throw NSError(domain: "invalid curseforge modpack: missing manifest.json", code: 0)
+        }
+
+        let manifestdata = try dataForEntry(manifestentry, in: archive)
+        let manifest = try JSONDecoder().decode(CurseForgeModpackManifest.self, from: manifestdata)
+
+        var managed = Set<String>()
+
+        for entry in archive {
+            if entry.path.hasSuffix("/") { continue }
+            guard let relative = stripMrpackOverridePrefix(entry.path) ?? stripPrefix("overrides", from: entry.path) else { continue }
+            let normalized = try normalizedRelativePath(relative)
+            let destination = serverroot.appendingPathComponent(normalized)
+            try fm.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+            if fm.fileExists(atPath: destination.path) {
+                try? fm.removeItem(at: destination)
+            }
+            _ = try archive.extract(entry, to: destination)
+            managed.insert(normalized)
+        }
+
+        let modsdir = serverroot.appendingPathComponent(ContentType.mod.dirname)
+        try fm.createDirectory(at: modsdir, withIntermediateDirectories: true)
+
+        var unresolvedFiles: [String] = []
+        for file in manifest.files {
+            do {
+                let (filedata, filename) = try await downloadCurseForgeFileKeyless(projectID: file.projectID, fileID: file.fileID)
+                let destination = modsdir.appendingPathComponent(filename)
+                try filedata.write(to: destination, options: [.atomic])
+                managed.insert("mods/\(filename)")
+            } catch {
+                unresolvedFiles.append("\(file.projectID):\(file.fileID)")
+            }
+        }
+
+        if !manifest.files.isEmpty, unresolvedFiles.count == manifest.files.count {
+            for relativePath in managed {
+                let path = serverroot.appendingPathComponent(relativePath)
+                if fm.fileExists(atPath: path.path) {
+                    try? fm.removeItem(at: path)
+                }
+            }
+            throw NSError(
+                domain: "could not resolve any CurseForge modpack files",
+                code: 0
+            )
+        }
+
+        if !unresolvedFiles.isEmpty {
+            modlogger.enclosedlog("warning: skipped \(unresolvedFiles.count) unresolved CurseForge modpack files")
+            modlogger.flushdivider()
+        }
+
+        let modpacksdir = serverroot.appendingPathComponent(ContentType.modpack.dirname)
+        try fm.createDirectory(at: modpacksdir, withIntermediateDirectories: true)
+        let markername = "\(mod.provider)-\(mod.providerID).installed.json"
+        let markerurl = modpacksdir.appendingPathComponent(markername)
+        let managedpaths = managed.sorted()
+        let markerdata = try JSONEncoder().encode(managedpaths)
+        try markerdata.write(to: markerurl, options: [.atomic])
+
+        modlogger.enclosedlog("installed modpack \(mod.title) with \(managedpaths.count) files")
+        modlogger.flushdivider()
+        return InstalledModRecord(filename: markername, contentType: .modpack, managedPaths: managedpaths)
+    }
+
+    private func downloadCurseForgeFileKeyless(projectID: Int, fileID: Int) async throws -> (Data, String) {
+        guard let downloadurl = URL(string: "https://www.curseforge.com/api/v1/mods/\\(projectID)/files/\\(fileID)/download") else {
+            throw NSError(domain: "invalid CurseForge download URL", code: 0)
+        }
+        let (data, response) = try await URLSession.shared.data(from: downloadurl)
+        let filename = response.suggestedFilename
+            ?? response.url?.lastPathComponent
+            ?? "\(fileID).jar"
+
+        return (data, filename.isEmpty ? "\(fileID).jar" : filename)
     }
 
     private func resolveCurseForgeManifestFileURL(projectID: Int, fileID: Int, key: String) async throws -> URL? {
