@@ -2666,17 +2666,17 @@ final class KeylessCurseClient {
             throw KeylessCurseClientError.loadFailed(err + hint)
         }
 
-        guard let modsSym = dlsym(handle, "cc_getmodslistjson") else {
+        guard let modsSym = dlsym(handle, "ccgetmodslistjson") else {
             dlclose(handle)
-            throw KeylessCurseClientError.symbolMissing("cc_getmodslistjson")
+            throw KeylessCurseClientError.symbolMissing("ccgetmodslistjson")
         }
-        guard let filesSym = dlsym(handle, "cc_getmodfilesjson") else {
+        guard let filesSym = dlsym(handle, "ccgetmodfilesjson") else {
             dlclose(handle)
-            throw KeylessCurseClientError.symbolMissing("cc_getmodfilesjson")
+            throw KeylessCurseClientError.symbolMissing("ccgetmodfilesjson")
         }
-        guard let freeSym = dlsym(handle, "cc_free_string") else {
+        guard let freeSym = dlsym(handle, "ccfreestring") else {
             dlclose(handle)
-            throw KeylessCurseClientError.symbolMissing("cc_free_string")
+            throw KeylessCurseClientError.symbolMissing("ccfreestring")
         }
 
         self.handle = handle
